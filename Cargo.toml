@@ -1,0 +1,11 @@
+[package]
+name = "pf8_upk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.23", features = ["cargo"] }
+memmap2 = "0.9.5"
+regex = "1.11.1"
+sha1 = "0.10.6"
+walkdir = "2.5.0"
