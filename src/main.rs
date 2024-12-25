@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use log::{debug, info};
-use pf8_upk::pf8;
-use pf8_upk::util;
+use pfs_rs::pf8;
+use pfs_rs::util;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
