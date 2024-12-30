@@ -16,7 +16,7 @@ This project provides tools to unpack and pack .pfs files used by the Artemis sy
 ## Usage
 
 ```plain
-Usage: pfs_rs [OPTIONS] [INPUTS]... [COMMAND]
+Usage: pfs_rs [OPTIONS] [COMMAND]
 
 Commands:
   unpack  Unpack a Artemis pfs archive
