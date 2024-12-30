@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 
-pub fn is_file_pf8(path: &Path) -> Result<bool> {
+pub fn is_file_pf8_from_magic(path: &Path) -> Result<bool> {
     // 打开文件
     let mut file = File::open(path)?;
 
@@ -25,6 +25,22 @@ pub fn is_file_pf8(path: &Path) -> Result<bool> {
     } else {
         Err(anyhow!("The file is not a pf8 file, found: {:?}", header))
     }
+}
+
+pub fn is_file_pf8_from_filename(path: &Path) -> bool {
+    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+        if name.contains(".pfs") {
+            return true;
+        }
+        false
+    } else {
+        false
+    }
+}
+
+pub fn glob_expand(input: &str) -> Result<Vec<PathBuf>> {
+    let paths = glob::glob(input)?.collect::<Result<Vec<_>, _>>()?;
+    Ok(paths)
 }
 
 /// 将反斜杠分隔的字符串转换为 PathBuf
@@ -67,9 +83,42 @@ pub fn get_pfs_basename(input: &Path) -> Result<String> {
         if let Some(pos) = name.find(".pfs") {
             return Ok(name[..pos].to_string());
         }
+        return Ok(name.to_string());
+    }
+    Err(anyhow!("Failed to get file name"))
+}
+
+pub fn get_pfs_basepath(input: &Path) -> Result<PathBuf> {
+    if let Some(name) = input.file_name().and_then(|s| s.to_str()) {
+        if let Some(pos) = name.find(".pfs") {
+            let base = input.parent().unwrap();
+            let path = base.join(&name[..pos]);
+            return Ok(path);
+        }
         return Err(anyhow!("Invalid file name"));
     }
     Err(anyhow!("Failed to get file name"))
+}
+
+/// input: dir: workdir/test base: root
+/// output: Ok(workdir/test/root.pfs.000)
+pub fn try_get_next_nonexist_pfs(dir: &Path, base: &str) -> Result<PathBuf> {
+    // return root.pfs if not exist
+    let filename = format!("{}.pfs", base);
+    let path = dir.join(filename);
+    if !path.exists() {
+        return Ok(path);
+    }
+    // return root.pfs.xxx if not exist
+    let mut i = 0;
+    loop {
+        let filename = format!("{}.pfs.{:03}", base, i);
+        let path = dir.join(filename);
+        if !path.exists() {
+            return Ok(path);
+        }
+        i += 1;
+    }
 }
 
 /// 根据输入路径，返回匹配到的文件路径列表

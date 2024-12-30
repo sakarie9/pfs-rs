@@ -3,7 +3,7 @@ use memmap2::Mmap;
 use sha1::{Digest, Sha1};
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::util;
@@ -170,7 +170,7 @@ fn parse_pf8(data: Vec<u8>) -> Option<Pf8> {
 fn make_pf8_archive(
     basepath: &Path,
     filelist: Vec<(String, u32)>,
-    unencrypted_filter: Vec<&str>,
+    unencrypted_filter: &[&str],
 ) -> Option<Vec<u8>> {
     let mut data_io = Vec::new();
     let mut fileentry_size = 0;
@@ -239,7 +239,7 @@ fn make_pf8_archive(
         let size = entry.size as usize;
         let mut encrypted = true;
 
-        if util::search_str_in_vec(&unencrypted_filter, path) {
+        if util::search_str_in_vec(unencrypted_filter, path) {
             encrypted = false;
         }
 
@@ -312,7 +312,7 @@ pub fn unpack_pf8(
 /// * `inpath`: 输入目录
 /// * `outpath`: 输出 pf8 文件路径
 /// * `unencrypted_filter`: 未加密的文件后缀列表
-pub fn pack_pf8(inpath: &Path, outpath: &Path, unencrypted_filter: Vec<&str>) -> io::Result<()> {
+pub fn pack_pf8(inpath: &Path, outpath: &Path, unencrypted_filter: &[&str]) -> io::Result<()> {
     let mut filelist = Vec::new();
     for entry in WalkDir::new(inpath) {
         let entry = entry?;
@@ -325,6 +325,59 @@ pub fn pack_pf8(inpath: &Path, outpath: &Path, unencrypted_filter: Vec<&str>) ->
         }
     }
     let data = make_pf8_archive(inpath, filelist, unencrypted_filter).unwrap();
+    let mut outfile = File::create(outpath)?;
+    outfile.write_all(&data)?;
+    Ok(())
+}
+
+/// 打包指定多个目录为 pf8 文件
+///
+/// * `inpath`: 输入目录
+/// * `outpath`: 输出 pf8 文件路径
+/// * `unencrypted_filter`: 未加密的文件后缀列表
+pub fn pack_pf8_multi_input(
+    inpath_dirs: &[PathBuf],
+    inpath_files: &[PathBuf],
+    outpath: &Path,
+    unencrypted_filter: &[&str],
+) -> io::Result<()> {
+    let mut filelist = Vec::new();
+    for input in inpath_dirs {
+        let prefix = input.parent().unwrap_or(Path::new(""));
+        for entry in WalkDir::new(input) {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let pf8_string =
+                    util::path_to_pf8_filename_string(path.strip_prefix(prefix).unwrap());
+
+                let size = fs::metadata(path)?.len() as u32;
+                filelist.push((pf8_string, size));
+            }
+        }
+    }
+
+    for input in inpath_files {
+        let prefix = input.parent().unwrap_or(Path::new(""));
+        for entry in WalkDir::new(input) {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let pf8_string =
+                    util::path_to_pf8_filename_string(path.strip_prefix(prefix).unwrap());
+
+                let size = fs::metadata(path)?.len() as u32;
+                filelist.push((pf8_string, size));
+            }
+        }
+
+        let pf8_string = util::path_to_pf8_filename_string(input.strip_prefix(prefix).unwrap());
+        let size = fs::metadata(input)?.len() as u32;
+        filelist.push((pf8_string, size));
+    }
+
+    let basepath = inpath_dirs[0].parent().unwrap();
+    let data = make_pf8_archive(basepath, filelist, unencrypted_filter).unwrap();
     let mut outfile = File::create(outpath)?;
     outfile.write_all(&data)?;
     Ok(())
