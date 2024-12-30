@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 
-pub fn is_file_pf8_from_magic(path: &Path) -> Result<bool> {
+pub fn get_pfs_version_from_magic(path: &Path) -> Result<usize> {
     // 打开文件
     let mut file = File::open(path)?;
 
@@ -21,7 +21,9 @@ pub fn is_file_pf8_from_magic(path: &Path) -> Result<bool> {
 
     // 判断是否为字符串 "pf8"
     if header == "pf8" {
-        Ok(true)
+        Ok(8)
+    } else if header == "pf6" {
+        Ok(6)
     } else {
         Err(anyhow!("The file is not a pf8 file, found: {:?}", header))
     }

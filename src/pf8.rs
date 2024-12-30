@@ -1,4 +1,5 @@
-use log::{debug, error, info};
+use anyhow::{anyhow, Result};
+use log::{debug, info};
 use memmap2::Mmap;
 use sha1::{Digest, Sha1};
 use std::fs::{self, File};
@@ -87,11 +88,6 @@ fn decrypt_pf8(buf: &[u8], start_offset: usize, size: usize, key: &[u8]) -> Vec<
 }
 
 fn parse_pf8(data: Vec<u8>) -> Option<Pf8> {
-    if &data[0..3] != b"pf8" {
-        error!("Error: invalid pf8 file!");
-        return None;
-    }
-
     let index_size = u32::from_le_bytes([data[3], data[4], data[5], data[6]]);
     let index_count = u32::from_le_bytes([data[7], data[8], data[9], data[10]]);
     let mut pf8 = Pf8 {
@@ -262,7 +258,18 @@ pub fn unpack_pf8(
     outpath: &Path,
     unencrypted_filter: Vec<&str>,
     pathlist: Option<Vec<String>>,
-) -> io::Result<()> {
+) -> Result<()> {
+    let mut is_pf8 = false;
+    match util::get_pfs_version_from_magic(inpath)? {
+        8 => {
+            is_pf8 = true;
+        }
+        6 => {}
+        _ => {
+            return Err(anyhow!("Input file {:?} is not a vaild pfs file!", inpath));
+        }
+    }
+
     let file = File::open(inpath)?;
     let data = unsafe { Mmap::map(&file)? };
     let pf8 = parse_pf8(data.to_vec()).unwrap();
@@ -287,7 +294,7 @@ pub fn unpack_pf8(
             encrypted = false;
         }
 
-        let buf = if encrypted {
+        let buf = if encrypted && is_pf8 {
             decrypt_pf8(&data, offset, size, &key)
         } else {
             data[offset..offset + size].to_vec()

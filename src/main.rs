@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
-use log::{debug, info};
+use log::info;
 use pfs_rs::pf8;
 use pfs_rs::util;
 use std::env;
@@ -45,25 +45,27 @@ enum Commands {
     },
 }
 
-fn command_unpack(input: &Path, output: &Path, split_output: bool, filters: &[&str]) -> Result<()> {
-    let pfs = util::find_pfs_files(input)?;
-    let pfs_count = pfs.len();
-
+fn command_unpack(
+    input: &Vec<PathBuf>,
+    output: &Path,
+    split_output: bool,
+    filters: &[&str],
+) -> Result<()> {
     let output_path = if split_output {
-        let unpack_name = format!("{}.unpack", input.file_name().unwrap().to_str().unwrap());
-        input.with_file_name(unpack_name)
+        let unpack_name = format!("{}.unpack", input[0].file_name().unwrap().to_str().unwrap());
+        input[0].with_file_name(unpack_name)
     } else {
-        output.join(util::get_pfs_basename(pfs[0].as_path())?)
+        output.join(util::get_pfs_basename(input[0].as_path())?)
     };
     fs::create_dir_all(&output_path)?;
 
-    for i in pfs {
-        info!("Unpacking {:?} to {}", i, output_path.display());
-        pf8::unpack_pf8(&i, &output_path, filters.to_vec(), None)?;
-        debug!("Unpacked {:?}", i);
+    for i in input {
+        info!("Unpacking {:?}", i);
+        pf8::unpack_pf8(i, &output_path, filters.to_vec(), None)?;
+        info!("Unpacked {:?} to {}", i, output_path.display());
     }
 
-    info!("Completed unpacking {} pfs files", pfs_count);
+    info!("Completed unpacking {} pfs files", input.len());
     Ok(())
 }
 fn command_pack(input: &Path, output: &Path, filters: &[&str], overwrite: bool) -> Result<()> {
@@ -115,9 +117,7 @@ fn main() -> Result<()> {
                 split_output,
             } => {
                 let files = util::glob_expand(input)?;
-                for file in files {
-                    command_unpack(file.as_path(), output, *split_output, &unencrypted_filter)?;
-                }
+                command_unpack(&files, output, *split_output, &unencrypted_filter)?;
             }
             Commands::Pack { input, output } => {
                 command_pack(input, output, &unencrypted_filter, overwrite)?;
@@ -149,9 +149,7 @@ fn main() -> Result<()> {
                 } else if is_empty_pack {
                     // unpack pfs
                     let output = util::get_pfs_basepath(input_pfs[0].as_path())?;
-                    for input in &input_pfs {
-                        command_unpack(input, output.as_path(), true, &unencrypted_filter)?;
-                    }
+                    command_unpack(&input_pfs, output.as_path(), true, &unencrypted_filter)?;
                 } else {
                     // pack
                     let base_dir = if input_dirs.is_empty() {
