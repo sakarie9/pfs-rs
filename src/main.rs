@@ -4,7 +4,6 @@ use clap::{Parser, Subcommand};
 use log::info;
 use pfs_rs::pf8;
 use pfs_rs::util;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -103,8 +102,7 @@ fn command_pack_multiple_inputs(
 }
 
 fn main() -> Result<()> {
-    env::set_var("RUST_LOG", "info");
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let unencrypted_filter: Vec<&str> = vec!["mp4", "flv"];
     let cli = Args::parse();
