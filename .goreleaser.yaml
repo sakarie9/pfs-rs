@@ -1,30 +1,22 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-
-# The lines below are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/need to use them.
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
 version: 2
 
 # Project name should ideally match the project name in your Cargo.toml.
-project_name: pfs_rs
+project_name: "pfs_rs"
 
-# Hooks ran before actually building anything.
-# Here we use them to prepare for building.
 before:
   hooks:
     - rustup default stable
-    # - cargo install --locked cargo-zigbuild
-    - cargo install --locked cross --git https://github.com/cross-rs/cross
+    - cargo install --locked cargo-zigbuild
+    # - cargo install --locked cross --git https://github.com/cross-rs/cross
     - cargo fetch --locked
 
-# Actually builds the binaries.
 builds:
   - builder: rust
-    tool: cross
-    command: build
+    # tool: cross
+    # command: build
     targets:
       - x86_64-unknown-linux-gnu
       # - x86_64-apple-darwin
@@ -47,10 +39,12 @@ archives:
       - goos: windows
         formats: zip
 
-# Changelog configuration (will be in the github release).
 changelog:
   sort: asc
   filters:
     exclude:
       - "^docs:"
       - "^test:"
+      - "^ci:"
+      - "^build:"
+
