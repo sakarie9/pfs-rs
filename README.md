@@ -1,5 +1,7 @@
 # pfs_rs
 
+English | [中文](./README_CN.md)
+
 Artemis .pfs file unpacker and packer written in Rust.
 
 ## Description
