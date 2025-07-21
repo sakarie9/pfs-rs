@@ -26,8 +26,9 @@ enum Commands {
     /// Unpack a Artemis pfs archive.
     ///
     /// Will also unpack related pfs files.
+    #[command(alias = "u")]
     Unpack {
-        /// Input file, ending in .pfs, can be a glob pattern
+        /// Input pfs file, can be a glob pattern
         input: String,
         /// Output directory
         output: PathBuf,
@@ -36,11 +37,18 @@ enum Commands {
         split_output: bool,
     },
     /// Pack a directory into a Artemis pfs archive
+    #[command(alias = "p")]
     Pack {
         /// Input directory
         input: PathBuf,
-        /// Output file, ending in .pfs
+        /// Output pfs file
         output: PathBuf,
+    },
+    /// List contents of a Artemis pfs archive
+    #[command(alias = "ls")]
+    List {
+        /// Input pfs file
+        input: PathBuf,
     },
 }
 
@@ -120,53 +128,43 @@ fn main() -> Result<()> {
             Commands::Pack { input, output } => {
                 command_pack(input, output, &unencrypted_filter, overwrite)?;
             }
+            Commands::List { input } => {
+                pf8::list_pf8(input)?;
+            }
         },
         None => {
             if !cli.inputs.is_empty() {
-                let mut input_pfs = Vec::new();
-                let mut input_dirs = Vec::new();
-                let mut input_files = Vec::new();
-                for input in cli.inputs {
-                    info!("Input: {:?}", input);
-                    if input.is_dir() {
-                        input_dirs.push(input);
-                    } else if util::is_file_pf8_from_filename(input.as_path()) {
-                        input_pfs.push(input);
-                    } else if input.is_file() {
-                        input_files.push(input);
-                    } else {
-                        panic!("Invalid input");
+                match util::process_cli_inputs(cli.inputs) {
+                    Ok(result) => {
+                        match result.input_type {
+                            util::InputType::PfsFiles(pfs_files) => {
+                                // 解包操作
+                                let output = result.suggested_output.ok_or_else(|| {
+                                    anyhow::anyhow!("Cannot determine output path for unpacking")
+                                })?;
+                                command_unpack(&pfs_files, &output, true, &unencrypted_filter)?;
+                            }
+                            util::InputType::PackFiles { dirs, files } => {
+                                // 打包操作
+                                let suggested_output =
+                                    result.suggested_output.ok_or_else(|| {
+                                        anyhow::anyhow!("Cannot determine output path for packing")
+                                    })?;
+                                let final_output =
+                                    util::get_final_output_path(suggested_output, overwrite)?;
+                                command_pack_multiple_inputs(
+                                    &dirs,
+                                    &files,
+                                    &final_output,
+                                    &unencrypted_filter,
+                                )?;
+                            }
+                        }
                     }
-                }
-                let is_empty_pfs = input_pfs.is_empty();
-                let is_empty_pack = input_dirs.is_empty() && input_files.is_empty();
-                if is_empty_pfs && is_empty_pack {
-                    panic!("Invalid input");
-                } else if !is_empty_pfs && !is_empty_pack {
-                    panic!("Mixing input pfses and files to pack");
-                } else if is_empty_pack {
-                    // unpack pfs
-                    let output = util::get_pfs_basepath(input_pfs[0].as_path())?;
-                    command_unpack(&input_pfs, output.as_path(), true, &unencrypted_filter)?;
-                } else {
-                    // pack
-                    let base_dir = if input_dirs.is_empty() {
-                        input_files[0].parent().unwrap()
-                    } else {
-                        input_dirs[0].parent().unwrap()
-                    };
-
-                    let output = if overwrite {
-                        base_dir.join("root.pfs")
-                    } else {
-                        util::try_get_next_nonexist_pfs(base_dir, "root")?
-                    };
-                    command_pack_multiple_inputs(
-                        &input_dirs,
-                        &input_files,
-                        output.as_path(),
-                        &unencrypted_filter,
-                    )?;
+                    Err(e) => {
+                        eprintln!("Error processing inputs: {}", e);
+                        std::process::exit(1);
+                    }
                 }
             } else {
                 let mut cmd = Args::command();

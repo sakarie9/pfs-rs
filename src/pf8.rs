@@ -1,9 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use log::{debug, info};
 use memmap2::Mmap;
 use sha1::{Digest, Sha1};
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -161,6 +161,55 @@ fn parse_pf8(data: Vec<u8>) -> Option<Pf8> {
         pf8.data[cur + 3],
     ]);
     Some(pf8)
+}
+
+// 只解析 PF8 文件头部分，用于列表功能
+fn parse_pf8_header_only(data: &[u8]) -> Option<(u32, Vec<Pf8Entry>)> {
+    if data.len() < 11 || &data[0..3] != b"pf8" {
+        return None;
+    }
+
+    let index_size = u32::from_le_bytes([data[3], data[4], data[5], data[6]]);
+    let index_count = u32::from_le_bytes([data[7], data[8], data[9], data[10]]);
+
+    // 检查数据长度是否足够读取索引部分
+    let required_size = 7 + index_size as usize;
+    if data.len() < required_size {
+        return None;
+    }
+
+    let mut file_entries = Vec::new();
+    let mut cur = 0x0B;
+
+    for _ in 0..index_count {
+        if cur + 4 > data.len() {
+            break;
+        }
+
+        let name_length =
+            u32::from_le_bytes([data[cur], data[cur + 1], data[cur + 2], data[cur + 3]]);
+
+        cur += 4;
+        if cur + name_length as usize + 12 > data.len() {
+            break;
+        }
+
+        let name = String::from_utf8(data[cur..cur + name_length as usize].to_vec()).ok()?;
+        cur += name_length as usize + 4; // skip zero u32
+
+        let offset = u32::from_le_bytes([data[cur], data[cur + 1], data[cur + 2], data[cur + 3]]);
+        let size = u32::from_le_bytes([data[cur + 4], data[cur + 5], data[cur + 6], data[cur + 7]]);
+
+        file_entries.push(Pf8Entry {
+            name_length,
+            name,
+            offset,
+            size,
+        });
+        cur += 8;
+    }
+
+    Some((index_count, file_entries))
 }
 
 fn make_pf8_archive(
@@ -388,4 +437,89 @@ pub fn pack_pf8_multi_input(
     let mut outfile = File::create(outpath)?;
     outfile.write_all(&data)?;
     Ok(())
+}
+
+pub fn list_pf8(input: &Path) -> Result<()> {
+    let mut file = File::open(input)?;
+
+    // 先读取基本头部信息
+    let mut header_buf = vec![0u8; 11];
+    file.read_exact(&mut header_buf)?;
+
+    if &header_buf[0..3] != b"pf8" {
+        return Err(anyhow!("Not a valid PF8 file"));
+    }
+
+    let index_size =
+        u32::from_le_bytes([header_buf[3], header_buf[4], header_buf[5], header_buf[6]]);
+
+    // 只读取索引部分，不读取文件数据
+    let total_header_size = 7 + index_size as usize;
+    let mut full_header = vec![0u8; total_header_size];
+
+    // 重新定位到文件开始
+    file.seek(std::io::SeekFrom::Start(0))?;
+    file.read_exact(&mut full_header)?;
+
+    // 使用只解析头部的函数
+    let (index_count, file_entries) =
+        parse_pf8_header_only(&full_header).ok_or_else(|| anyhow!("Failed to parse PF8 header"))?;
+
+    println!("PF8 Archive: {}", input.display());
+    println!("{}", "=".repeat(80));
+    println!("{:<50} {:>10} {:>15}", "File Path", "Size", "Status");
+    println!("{}", "-".repeat(80));
+
+    let mut total_size = 0u64;
+    let mut encrypted_count = 0u32;
+    let mut unencrypted_count = 0u32;
+
+    for entry in file_entries.iter().take(index_count as usize) {
+        let path = entry.name.trim_end_matches('\0');
+        let size = entry.size as usize;
+        let mut encrypted = true;
+
+        if util::search_str_in_vec(&[], path) {
+            encrypted = false;
+        }
+
+        let status = if encrypted {
+            encrypted_count += 1;
+            "Encrypted"
+        } else {
+            unencrypted_count += 1;
+            "Unencrypted"
+        };
+        let size_str = format_size(size);
+        total_size += entry.size as u64;
+
+        println!("{:<50} {:>10} {:>15}", path, size_str, status);
+    }
+
+    println!("{}", "=".repeat(80));
+    println!(
+        "Summary: {} files ({} encrypted, {} unencrypted), Total size: {}",
+        index_count,
+        encrypted_count,
+        unencrypted_count,
+        format_size(total_size as usize)
+    );
+    Ok(())
+}
+
+fn format_size(size: usize) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
+    let mut size = size as f64;
+    let mut unit_index = 0;
+
+    while size >= 1000.0 && unit_index < UNITS.len() - 1 {
+        size /= 1000.0;
+        unit_index += 1;
+    }
+
+    if unit_index == 0 {
+        format!("{} {}", size as usize, UNITS[unit_index])
+    } else {
+        format!("{:.1} {}", size, UNITS[unit_index])
+    }
 }

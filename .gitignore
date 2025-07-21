@@ -21,3 +21,4 @@ target/
 
 dist/
 target
+tests/

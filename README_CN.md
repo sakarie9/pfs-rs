@@ -23,6 +23,7 @@
 命令：
   unpack  解包 Artemis pfs 存档
   pack    将目录打包成 Artemis pfs 存档
+  list    列出 Artemis pfs 存档内容
   help    打印此消息或给定子命令的帮助信息
 
 选项：
@@ -31,13 +32,19 @@
   -V, --version    打印版本信息
 ```
 
+**注意：** 命令也支持缩写别名：
+
+- `unpack` 可以缩写为 `u`
+- `pack` 可以缩写为 `p`  
+- `list` 可以缩写为 `ls`
+
 ### 解包
 
 ```plain
 用法：pfs_rs unpack [选项] <输入> <输出>
 
 参数：
-  <输入>   输入文件，以 .pfs 结尾，可以是 glob 模式
+  <输入>   输入 pfs 文件，可以是 glob 模式
   <输出>  输出目录
 
 选项：
@@ -88,7 +95,7 @@ pfs_rs unpack <pfs文件路径> <解压目录路径>
 
 参数：
   <输入>   输入目录
-  <输出>  输出文件，以 .pfs 结尾
+  <输出>  输出 pfs 文件
 
 选项：
   -h, --help  打印帮助信息
@@ -141,6 +148,36 @@ pfs_rs pack <目录路径> <pfs文件路径>
   会将指定的目录和文件打包到 root.pfs。
 
   > 你也可以将文件夹拖拽到可执行文件上来打包它们
+
+### 列表
+
+```plain
+用法：pfs_rs list <输入>
+
+参数：
+  <输入>  输入 pfs 文件
+
+选项：
+  -h, --help  打印帮助信息
+```
+
+列出 .pfs 文件的内容：
+
+```bash
+pfs_rs list <pfs文件路径>
+# 或使用缩写别名：
+pfs_rs ls <pfs文件路径>
+```
+
+示例：
+
+```bash
+pfs_rs list root.pfs
+# 或
+pfs_rs ls root.pfs
+```
+
+这将显示一个格式化的表格，显示存档中的所有文件及其大小和加密状态。
 
 ## 致谢
 

@@ -23,6 +23,7 @@ Usage: pfs_rs [OPTIONS] [COMMAND]
 Commands:
   unpack  Unpack a Artemis pfs archive
   pack    Pack a directory into a Artemis pfs archive
+  list    List contents of a Artemis pfs archive
   help    Print this message or the help of the given subcommand(s)
 
 Options:
@@ -31,13 +32,19 @@ Options:
   -V, --version    Print version
 ```
 
+**Note:** Commands also support short aliases:
+
+- `unpack` can be used as `u`
+- `pack` can be used as `p`  
+- `list` can be used as `ls`
+
 ### Unpack
 
 ```plain
 Usage: pfs_rs unpack [OPTIONS] <INPUT> <OUTPUT>
 
 Arguments:
-  <INPUT>   Input file, ending in .pfs, can be a glob pattern
+  <INPUT>   Input pfs file, can be a glob pattern
   <OUTPUT>  Output directory
 
 Options:
@@ -88,7 +95,7 @@ Usage: pfs_rs pack <INPUT> <OUTPUT>
 
 Arguments:
   <INPUT>   Input directory
-  <OUTPUT>  Output file, ending in .pfs
+  <OUTPUT>  Output pfs file
 
 Options:
   -h, --help  Print help
@@ -141,6 +148,36 @@ Example:
   Will pack specified dirs and files into root.pfs.
 
   > you can also drag folders into the executable file to pack them
+
+### List
+
+```plain
+Usage: pfs_rs list <INPUT>
+
+Arguments:
+  <INPUT>  Input pfs file
+
+Options:
+  -h, --help  Print help
+```
+
+To list contents of a .pfs file:
+
+```bash
+pfs_rs list <path_to_pfs_file>
+# or use the short alias:
+pfs_rs ls <path_to_pfs_file>
+```
+
+Example:
+
+```bash
+pfs_rs list root.pfs
+# or
+pfs_rs ls root.pfs
+```
+
+This will display a formatted table showing all files in the archive with their sizes and encryption status.
 
 ## Acknowledgements
 
