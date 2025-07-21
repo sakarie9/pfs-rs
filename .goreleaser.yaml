@@ -14,15 +14,28 @@ before:
     - cargo fetch --locked
 
 builds:
-  - builder: rust
+  - id: linux-amd64-gnu
+    builder: rust
+    targets:
+      - x86_64-unknown-linux-gnu
+  # - id: linux-amd64-musl
+  #   builder: rust
+  #   targets:
+  #     - x86_64-unknown-linux-musl
+  - id: linux-arm64-gnu
+    builder: rust
+    targets:
+      - aarch64-unknown-linux-gnu
+  # - id: linux-arm64-musl
+  #   builder: rust
+  #   targets:
+  #     - aarch64-unknown-linux-musl
+  - id: windows-amd64-gnu
+    builder: rust
     # tool: cross
     # command: build
     targets:
-      - x86_64-unknown-linux-gnu
-      # - x86_64-apple-darwin
       - x86_64-pc-windows-gnu
-      - aarch64-unknown-linux-gnu
-      # - aarch64-apple-darwin
 
 # Creates archives for each target.
 archives:
@@ -34,6 +47,10 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
+    #  {{- if contains .Target "musl" }}-musl
+    #  {{- else if contains .Target "gnu" }}-gnu
+    #  {{- end }}
+
     # use zip for windows archives
     format_overrides:
       - goos: windows
