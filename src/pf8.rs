@@ -1,10 +1,15 @@
 use anyhow::{Result, anyhow};
+use human_bytes::human_bytes;
 use log::{debug, info};
 use memmap2::Mmap;
 use sha1::{Digest, Sha1};
+use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, Write};
 use std::path::{Path, PathBuf};
+use tabled::settings::object::Columns;
+use tabled::settings::{Alignment, Style};
+use tabled::{Table, Tabled};
 use walkdir::WalkDir;
 
 use crate::util;
@@ -44,6 +49,40 @@ struct Pf8 {
     filesize_offsets: Vec<u64>,
     filesize_count_offset: u32,
     data: Vec<u8>,
+}
+
+/// Represents a file entry in the PF8 archive
+#[derive(Tabled)]
+struct Pf8File {
+    #[tabled(rename = "File")]
+    name: String, // Actually the path in the archive
+    #[tabled(rename = "Size", display = "Self::format_size")]
+    size: u32,
+    // encrypted: bool,
+}
+
+impl Pf8File {
+    fn format_size(size: &u32) -> String {
+        human_bytes(*size)
+    }
+}
+/// Represents a list of files in the PF8 archive
+struct Pf8FileList {
+    files: Vec<Pf8File>,
+}
+
+impl fmt::Display for Pf8FileList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut table = Table::new(&self.files);
+        table.with(Style::markdown());
+        table.modify(Columns::last(), Alignment::right());
+
+        let count = self.files.len();
+        let size = self.files.iter().map(|f| f.size).sum::<u32>();
+        let footer = format!("Total: {} files, Total size: {}", count, human_bytes(size));
+
+        write!(f, "{}\n{}", table, footer)
+    }
 }
 
 fn make_key_pf8(pf8: &Pf8) -> Vec<u8> {
@@ -465,61 +504,22 @@ pub fn list_pf8(input: &Path) -> Result<()> {
     let (index_count, file_entries) =
         parse_pf8_header_only(&full_header).ok_or_else(|| anyhow!("Failed to parse PF8 header"))?;
 
-    println!("PF8 Archive: {}", input.display());
-    println!("{}", "=".repeat(80));
-    println!("{:<50} {:>10} {:>15}", "File Path", "Size", "Status");
-    println!("{}", "-".repeat(80));
+    // 构建文件列表
+    let file_list = Pf8FileList {
+        files: file_entries
+            .into_iter()
+            .take(index_count as usize)
+            .map(|entry| Pf8File {
+                name: entry.name,
+                size: entry.size,
+            })
+            .collect(),
+    };
 
-    let mut total_size = 0u64;
-    let mut encrypted_count = 0u32;
-    let mut unencrypted_count = 0u32;
+    // 打印文件列表表格
+    println!("{}", input.display());
+    println!();
+    println!("{}", file_list);
 
-    for entry in file_entries.iter().take(index_count as usize) {
-        let path = entry.name.trim_end_matches('\0');
-        let size = entry.size as usize;
-        let mut encrypted = true;
-
-        if util::search_str_in_vec(&[], path) {
-            encrypted = false;
-        }
-
-        let status = if encrypted {
-            encrypted_count += 1;
-            "Encrypted"
-        } else {
-            unencrypted_count += 1;
-            "Unencrypted"
-        };
-        let size_str = format_size(size);
-        total_size += entry.size as u64;
-
-        println!("{:<50} {:>10} {:>15}", path, size_str, status);
-    }
-
-    println!("{}", "=".repeat(80));
-    println!(
-        "Summary: {} files ({} encrypted, {} unencrypted), Total size: {}",
-        index_count,
-        encrypted_count,
-        unencrypted_count,
-        format_size(total_size as usize)
-    );
     Ok(())
-}
-
-fn format_size(size: usize) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
-    let mut size = size as f64;
-    let mut unit_index = 0;
-
-    while size >= 1000.0 && unit_index < UNITS.len() - 1 {
-        size /= 1000.0;
-        unit_index += 1;
-    }
-
-    if unit_index == 0 {
-        format!("{} {}", size as usize, UNITS[unit_index])
-    } else {
-        format!("{:.1} {}", size, UNITS[unit_index])
-    }
 }
