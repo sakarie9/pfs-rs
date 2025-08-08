@@ -66,7 +66,7 @@ impl fmt::Display for FileList {
 
         let mut table = Table::new(&self.entries);
         table.with(Style::markdown());
-        table.modify(Columns::new(1..2), Alignment::right()); // Align size column
+        table.modify(Columns::last(), Alignment::right()); // Align size column
 
         let count = self.entries.len();
         let total_size: u64 = self.entries.iter().map(|e| e.size as u64).sum();

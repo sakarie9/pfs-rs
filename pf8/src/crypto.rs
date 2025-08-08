@@ -29,15 +29,6 @@ pub fn encrypt(data: &mut [u8], key: &[u8]) {
     }
 }
 
-/// Encrypts data and returns the result without modifying the original
-#[allow(dead_code)]
-pub fn encrypt_copy(data: &[u8], key: &[u8]) -> Vec<u8> {
-    data.iter()
-        .enumerate()
-        .map(|(i, &byte)| byte ^ key[i % key.len()])
-        .collect()
-}
-
 /// Decrypts data using XOR with the provided key (same as encrypt for XOR)
 pub fn decrypt(data: &[u8], key: &[u8]) -> Vec<u8> {
     data.iter()

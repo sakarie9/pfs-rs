@@ -13,7 +13,7 @@ pub fn is_file_pf8_from_filename(path: &Path) -> bool {
 }
 
 pub fn glob_expand(input: &str) -> Result<Vec<PathBuf>> {
-    let paths = glob::glob(input)?.filter_map(Result::ok).collect::<Vec<_>>();
+    let paths = glob::glob(input)?.collect::<Result<Vec<_>, _>>()?;
     if paths.is_empty() {
         return Err(anyhow!("No files found matching pattern: '{}'", input));
     }
