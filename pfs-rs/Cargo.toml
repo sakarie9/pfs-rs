@@ -7,6 +7,10 @@ edition = "2024"
 name = "pfs-rs"
 path = "src/main.rs"
 
+[features]
+default = ["display"]
+display = ["pf8/display"]
+
 [dependencies]
 pf8 = { path = "../pf8" }
 anyhow = { workspace = true }
