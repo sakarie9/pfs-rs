@@ -1,23 +1,33 @@
 //! Writer for creating PF8 archives.
 
+use crate::constants::BUFFER_SIZE;
 use crate::crypto;
 use crate::entry::Pf8Entry;
 use crate::error::{Error, Result};
 use crate::format;
-use std::fs::File;
-use std::io::Write;
+use std::fs::{File, OpenOptions};
+use std::io::{Seek, Write};
 use std::path::Path;
+
+/// Minimal information needed for encryption
+#[derive(Debug, Clone)]
+struct EncryptionInfo {
+    is_encrypted: bool,
+    size: u32,
+}
 
 /// A writer for creating PF8 archives
 pub struct Pf8Writer {
     /// The output file
     output: File,
-    /// Archive data buffer
-    data: Vec<u8>,
+    /// Header buffer (only stores header data)
+    header_data: Vec<u8>,
     /// Current state of the writer
     state: WriterState,
-    /// Stored entries with their encryption information
-    entries: Vec<Pf8Entry>,
+    /// Minimal encryption info for each entry
+    encryption_info: Vec<EncryptionInfo>,
+    /// Position where file data starts
+    data_start_pos: u64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -31,13 +41,19 @@ enum WriterState {
 impl Pf8Writer {
     /// Creates a new writer for the given output file
     pub fn create<P: AsRef<Path>>(output_path: P) -> Result<Self> {
-        let output = File::create(output_path)?;
+        let output = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(output_path)?;
 
         Ok(Self {
             output,
-            data: Vec::new(),
+            header_data: Vec::new(),
             state: WriterState::Created,
-            entries: Vec::new(),
+            encryption_info: Vec::new(),
+            data_start_pos: 0,
         })
     }
 
@@ -47,8 +63,14 @@ impl Pf8Writer {
             return Err(Error::InvalidFormat("Header already written".to_string()));
         }
 
-        // Store entries for later use during finalization
-        self.entries = entries.iter().cloned().cloned().collect();
+        // Store minimal encryption info for later use during finalization
+        self.encryption_info = entries
+            .iter()
+            .map(|entry| EncryptionInfo {
+                is_encrypted: entry.is_encrypted(),
+                size: entry.size(),
+            })
+            .collect();
 
         // Calculate sizes
         let index_count = entries.len() as u32;
@@ -60,10 +82,13 @@ impl Pf8Writer {
 
         let index_size = (4 + fileentry_size + 4 + (index_count as usize + 1) * 8 + 4) as u32;
 
-        // Write magic, index_size, and index_count
-        self.data.extend_from_slice(format::PF8_MAGIC);
-        self.data.extend_from_slice(&index_size.to_le_bytes());
-        self.data.extend_from_slice(&index_count.to_le_bytes());
+        // Build header in memory (only header data, not file content)
+        self.header_data.clear();
+        self.header_data.extend_from_slice(format::PF8_MAGIC);
+        self.header_data
+            .extend_from_slice(&index_size.to_le_bytes());
+        self.header_data
+            .extend_from_slice(&index_count.to_le_bytes());
 
         // Write file entries
         let mut file_offset = index_size + format::offsets::INDEX_DATA_START as u32;
@@ -73,34 +98,43 @@ impl Pf8Writer {
             let name_bytes = entry.pf8_path().as_bytes();
             let name_length = name_bytes.len() as u32;
 
-            self.data.extend_from_slice(&name_length.to_le_bytes());
-            self.data.extend_from_slice(name_bytes);
-            self.data.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // padding
-            self.data.extend_from_slice(&file_offset.to_le_bytes());
-            self.data.extend_from_slice(&entry.size().to_le_bytes());
+            self.header_data
+                .extend_from_slice(&name_length.to_le_bytes());
+            self.header_data.extend_from_slice(name_bytes);
+            self.header_data
+                .extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // padding
+            self.header_data
+                .extend_from_slice(&file_offset.to_le_bytes());
+            self.header_data
+                .extend_from_slice(&entry.size().to_le_bytes());
 
             // Track the offset of the size field for later use
-            filesize_offsets.push((self.data.len() - 4 - format::offsets::ENTRIES_START) as u64);
+            filesize_offsets
+                .push((self.header_data.len() - 4 - format::offsets::ENTRIES_START) as u64);
             file_offset += entry.size();
         }
 
         // Write filesize count and offsets
-        self.data
+        self.header_data
             .extend_from_slice(&(index_count + 1).to_le_bytes());
 
         let filesize_count_offset =
-            (self.data.len() - 4 - format::offsets::INDEX_DATA_START) as u32;
+            (self.header_data.len() - 4 - format::offsets::INDEX_DATA_START) as u32;
 
         for offset in filesize_offsets {
-            self.data.extend_from_slice(&offset.to_le_bytes());
+            self.header_data.extend_from_slice(&offset.to_le_bytes());
         }
 
         // End marker
-        self.data.extend_from_slice(&[0x00; 8]);
+        self.header_data.extend_from_slice(&[0x00; 8]);
 
         // Write filesize_count_offset
-        self.data
+        self.header_data
             .extend_from_slice(&filesize_count_offset.to_le_bytes());
+
+        // Write header to file immediately
+        self.output.write_all(&self.header_data)?;
+        self.data_start_pos = self.output.stream_position()?;
 
         self.state = WriterState::HeaderWritten;
         Ok(())
@@ -126,14 +160,14 @@ impl Pf8Writer {
             )));
         }
 
-        // Store the data for later encryption
-        self.data.extend_from_slice(data);
+        // Write data directly to file instead of buffering
+        self.output.write_all(data)?;
         self.state = WriterState::WritingData;
 
         Ok(())
     }
 
-    /// Finalizes the archive by applying encryption and writing to file
+    /// Finalizes the archive by applying encryption
     pub fn finalize(&mut self) -> Result<()> {
         if self.state == WriterState::Finalized {
             return Ok(());
@@ -143,26 +177,52 @@ impl Pf8Writer {
             return Err(Error::InvalidFormat("No data written".to_string()));
         }
 
+        // For in-place encryption, we need to read back the file data
+        // This is still more memory efficient than keeping everything in memory
+
         // Generate encryption key from header
-        let index_size = format::get_index_size(&self.data)?;
-        let encryption_key = crypto::generate_key(&self.data, index_size);
+        let index_size = format::get_index_size(&self.header_data)?;
+        let encryption_key = crypto::generate_key(&self.header_data, index_size);
 
-        // Apply encryption to file data using stored entry information
-        let mut data_offset = format::offsets::INDEX_DATA_START + index_size as usize;
+        // Get current file position (end of file)
+        let file_end = self.output.stream_position()?;
 
-        for entry in &self.entries {
-            if entry.is_encrypted() && data_offset + entry.size() as usize <= self.data.len() {
-                crypto::encrypt(
-                    &mut self.data[data_offset..data_offset + entry.size() as usize],
-                    &encryption_key,
-                );
+        // Process each file that needs encryption
+        let mut data_offset = self.data_start_pos;
+
+        for enc_info in &self.encryption_info {
+            if enc_info.is_encrypted {
+                // Read, encrypt, and write back in chunks
+                let file_size = enc_info.size as u64;
+                let mut processed = 0u64;
+
+                while processed < file_size {
+                    let chunk_len = std::cmp::min(BUFFER_SIZE, (file_size - processed) as usize);
+
+                    // Read chunk
+                    self.output
+                        .seek(std::io::SeekFrom::Start(data_offset + processed))?;
+                    let mut buffer = vec![0u8; chunk_len];
+                    use std::io::Read;
+                    self.output.read_exact(&mut buffer)?;
+
+                    // Encrypt chunk
+                    crypto::encrypt(&mut buffer, &encryption_key);
+
+                    // Write back encrypted chunk
+                    self.output
+                        .seek(std::io::SeekFrom::Start(data_offset + processed))?;
+                    self.output.write_all(&buffer)?;
+
+                    processed += chunk_len as u64;
+                }
             }
 
-            data_offset += entry.size() as usize;
+            data_offset += enc_info.size as u64;
         }
 
-        // Write all data to file
-        self.output.write_all(&self.data)?;
+        // Restore file position to end
+        self.output.seek(std::io::SeekFrom::Start(file_end))?;
         self.output.flush()?;
 
         self.state = WriterState::Finalized;
@@ -170,8 +230,9 @@ impl Pf8Writer {
     }
 
     /// Gets the current size of the archive
-    pub fn size(&self) -> usize {
-        self.data.len()
+    pub fn size(&mut self) -> usize {
+        // Return current file position
+        self.output.stream_position().unwrap_or(0) as usize
     }
 
     /// Checks if the writer is finalized

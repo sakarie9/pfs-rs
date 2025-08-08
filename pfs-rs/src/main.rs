@@ -36,9 +36,6 @@ enum Commands {
         /// Unpack single file rather than all related files
         #[arg(short, long, default_value_t = false)]
         split_output: bool,
-        /// Buffer size for memory optimization (in KiB)
-        #[arg(long, default_value_t = 4096)]
-        buffer_size: usize,
     },
     /// Pack a directory into a Artemis pfs archive
     #[command(alias = "p")]
@@ -60,11 +57,8 @@ fn command_unpack_paths(
     paths: &[PathBuf],
     output: &Path,
     split_output: bool,
-    buffer_size: usize,
     filters: Option<&[&str]>,
 ) -> Result<()> {
-    let buffer_bytes = buffer_size * 1024; // Convert KiB to bytes
-
     for path in paths {
         let output_path = if split_output {
             let filename = path.file_stem().unwrap();
@@ -73,10 +67,7 @@ fn command_unpack_paths(
             output.to_path_buf()
         };
         fs::create_dir_all(&output_path)?;
-        info!(
-            "Unpacking {:?} to {:?} with {}KiB buffer",
-            path, output_path, buffer_size
-        );
+        info!("Unpacking {:?} to {:?}", path, output_path);
 
         let mut archive = if let Some(filters) = filters {
             pf8::Pf8Archive::open_with_patterns(path, filters)?
@@ -84,8 +75,8 @@ fn command_unpack_paths(
             pf8::Pf8Archive::open(path)?
         };
 
-        // Use memory-optimized extraction with specified buffer
-        archive.extract_all_with_buffer_size(&output_path, buffer_bytes)?;
+        // Use memory-optimized extraction
+        archive.extract_all(&output_path)?;
 
         info!("Completed unpacking");
     }
@@ -165,10 +156,9 @@ fn main() -> Result<()> {
                 input,
                 output,
                 split_output,
-                buffer_size,
             } => {
                 let files = util::glob_expand(input)?;
-                command_unpack_paths(&files, output, *split_output, *buffer_size, None)?;
+                command_unpack_paths(&files, output, *split_output, None)?;
             }
             Commands::Pack { input, output } => {
                 command_pack(input, output, None, overwrite)?;
@@ -198,7 +188,7 @@ fn main() -> Result<()> {
                                 let output = result.suggested_output.ok_or_else(|| {
                                     anyhow::anyhow!("Cannot determine output path for unpacking")
                                 })?;
-                                command_unpack_paths(&pfs_files, &output, true, 4096, None)?;
+                                command_unpack_paths(&pfs_files, &output, true, None)?;
                             }
                             util::InputType::PackFiles { dirs, files } => {
                                 // 打包操作

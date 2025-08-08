@@ -92,6 +92,7 @@ pub mod error;
 pub mod reader;
 pub mod writer;
 
+mod constants;
 mod crypto;
 mod format;
 mod utils;

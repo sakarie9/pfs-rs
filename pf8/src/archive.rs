@@ -85,33 +85,9 @@ impl Pf8Archive {
         self.reader.read_file_streaming(path, callback)
     }
 
-    /// Reads a file's data with streaming and custom buffer size
-    pub fn read_file_streaming_with_buffer_size<P: AsRef<Path>, F>(
-        &mut self,
-        path: P,
-        buffer_size: usize,
-        callback: F,
-    ) -> Result<()>
-    where
-        F: FnMut(&[u8]) -> Result<()>,
-    {
-        self.reader
-            .read_file_streaming_with_buffer_size(path, buffer_size, callback)
-    }
-
     /// Extracts all files to the specified directory
     pub fn extract_all<P: AsRef<Path>>(&mut self, output_dir: P) -> Result<()> {
         self.reader.extract_all(output_dir)
-    }
-
-    /// Extracts all files to the specified directory with specified buffer size for memory optimization
-    pub fn extract_all_with_buffer_size<P: AsRef<Path>>(
-        &mut self,
-        output_dir: P,
-        buffer_size: usize,
-    ) -> Result<()> {
-        self.reader
-            .extract_all_with_buffer_size(output_dir, buffer_size)
     }
 
     /// Extracts a specific file to the given path

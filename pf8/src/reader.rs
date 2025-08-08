@@ -1,5 +1,6 @@
 //! High-level reader for PF6/PF8 archives.
 
+use crate::constants::{BUFFER_SIZE, UNENCRYPTED_FILTER};
 use crate::crypto;
 use crate::entry::Pf8Entry;
 use crate::error::{Error, Result};
@@ -8,8 +9,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
-
-const UNENCRYPTED_FILTER: [&str; 2] = ["mp4", "flv"];
 
 /// Optimized reader for PF6/PF8 archives with minimal memory usage
 ///
@@ -136,20 +135,7 @@ impl Pf8Reader {
     }
 
     /// Reads a file's data with streaming to minimize memory allocation
-    pub fn read_file_streaming<P: AsRef<Path>, F>(&mut self, path: P, callback: F) -> Result<()>
-    where
-        F: FnMut(&[u8]) -> Result<()>,
-    {
-        self.read_file_streaming_with_buffer_size(path, 64 * 1024, callback)
-    }
-
-    /// Reads a file's data with streaming and custom buffer size
-    pub fn read_file_streaming_with_buffer_size<P: AsRef<Path>, F>(
-        &mut self,
-        path: P,
-        buffer_size: usize,
-        mut callback: F,
-    ) -> Result<()>
+    pub fn read_file_streaming<P: AsRef<Path>, F>(&mut self, path: P, mut callback: F) -> Result<()>
     where
         F: FnMut(&[u8]) -> Result<()>,
     {
@@ -167,7 +153,7 @@ impl Pf8Reader {
 
         self.file.seek(SeekFrom::Start(start_offset))?;
 
-        if file_size <= buffer_size {
+        if file_size <= BUFFER_SIZE {
             // Small file: read directly
             let mut data = vec![0u8; file_size];
             self.file.read_exact(&mut data)?;
@@ -187,11 +173,11 @@ impl Pf8Reader {
             callback(&data)?;
         } else {
             // Large file: stream in chunks
-            let mut buffer = vec![0u8; buffer_size];
+            let mut buffer = vec![0u8; BUFFER_SIZE];
             let mut bytes_read = 0;
 
             while bytes_read < file_size {
-                let chunk_size = (file_size - bytes_read).min(buffer_size);
+                let chunk_size = (file_size - bytes_read).min(BUFFER_SIZE);
                 self.file.read_exact(&mut buffer[..chunk_size])?;
 
                 if is_encrypted {
@@ -217,17 +203,8 @@ impl Pf8Reader {
 
     /// Extracts all files to the specified directory with memory optimization
     pub fn extract_all<P: AsRef<Path>>(&mut self, output_dir: P) -> Result<()> {
-        self.extract_all_with_buffer_size(output_dir, 1024 * 1024) // 1MB default buffer
-    }
-
-    /// Extracts all files with specified buffer size for memory optimization
-    pub fn extract_all_with_buffer_size<P: AsRef<Path>>(
-        &mut self,
-        output_dir: P,
-        buffer_size: usize,
-    ) -> Result<()> {
         let output_dir = output_dir.as_ref();
-        let mut buffer = vec![0u8; buffer_size];
+        let mut buffer = vec![0u8; BUFFER_SIZE];
 
         for entry in &self.entries.clone() {
             let file_path = output_dir.join(entry.path());
