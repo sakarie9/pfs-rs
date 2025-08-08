@@ -1,50 +1,5 @@
-use std::{
-    fs::{self, File},
-    io::Read,
-    path::{Path, PathBuf},
-};
-
 use anyhow::{Result, anyhow};
-
-pub fn get_pfs_version_from_file(path: &Path) -> Result<usize> {
-    // 打开文件
-    let mut file = File::open(path)?;
-
-    // 创建一个缓冲区来存储前三个字节
-    let mut buffer = [0; 3];
-
-    // 读取文件的前三个字节
-    file.read_exact(&mut buffer)?;
-
-    // 将字节缓冲区转换为字符串
-    let header = std::str::from_utf8(&buffer).expect("Invalid UTF-8 sequence");
-
-    // 判断是否为字符串 "pf8"
-    if header == "pf8" {
-        Ok(8)
-    } else if header == "pf6" {
-        Ok(6)
-    } else {
-        Err(anyhow!("The file is not a pf8 file, found: {:?}", header))
-    }
-}
-
-pub fn get_pfs_version_from_data(data: &[u8]) -> Result<usize> {
-    // 将字节缓冲区转换为字符串
-    let header = std::str::from_utf8(&data[0..3]).map_err(|_| anyhow!("Invalid input file!"))?;
-
-    // 判断是否为字符串 "pf8"
-    if header == "pf8" {
-        Ok(8)
-    } else if header == "pf6" {
-        Ok(6)
-    } else {
-        Err(anyhow!(
-            "The file is not a pf8 or pf6 file, found: {:?}",
-            header
-        ))
-    }
-}
+use std::path::{Path, PathBuf};
 
 pub fn is_file_pf8_from_filename(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
@@ -59,32 +14,10 @@ pub fn is_file_pf8_from_filename(path: &Path) -> bool {
 
 pub fn glob_expand(input: &str) -> Result<Vec<PathBuf>> {
     let paths = glob::glob(input)?.collect::<Result<Vec<_>, _>>()?;
+    if paths.is_empty() {
+        return Err(anyhow!("No files found matching pattern: '{}'", input));
+    }
     Ok(paths)
-}
-
-/// 将反斜杠分隔的字符串转换为 PathBuf
-pub fn pf8_filename_str_to_path(s: &str) -> PathBuf {
-    s.split("\\").collect()
-}
-
-/// 将 Path 转换为反斜杠分隔的字符串
-pub fn path_to_pf8_filename_string(path: &Path) -> String {
-    // 将每个组件都转换为 &str 并收集到 Vec 中
-    let components: Vec<&str> = path
-        .iter()
-        .map(|os_str| os_str.to_str().unwrap_or(""))
-        .collect();
-    // 用反斜杠拼接生成字符串
-    components.join("\\")
-}
-
-pub fn get_str_extension(s: &str) -> Option<&str> {
-    let path = Path::new(s);
-    path.extension().and_then(|s| s.to_str())
-}
-
-pub fn search_str_in_vec(vec: &[&str], s: &str) -> bool {
-    vec.iter().any(|x| *x == s)
 }
 
 /// Extracts the base name of a file without the ".pfs" extension.
@@ -138,47 +71,6 @@ pub fn try_get_next_nonexist_pfs(dir: &Path, base: &str) -> Result<PathBuf> {
         }
         i += 1;
     }
-}
-
-/// 根据输入路径，返回匹配到的文件路径列表
-/// - 若输入为目录，则返回目录下后缀为 .pfs 或 .pfs.xxx 的文件路径
-/// - 若输入为文件，则返回同目录下与该文件文件名一致（前缀相同）的所有相关文件路径
-pub fn find_pfs_files(input: &Path) -> Result<Vec<PathBuf>> {
-    let mut results = Vec::new();
-
-    if input.is_dir() {
-        // 如果是目录，则查找所有 .pfs 或 .pfs.xxx 文件
-        for entry in fs::read_dir(input)? {
-            let path = entry?.path();
-            if path.is_file() {
-                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                    // 简单判断：文件名以 ".pfs" 结尾，或形如 ".pfs.xxx"
-                    // 例如：NUKITASHI.pfs / NUKITASHI.pfs.000
-                    if name.ends_with(".pfs") || is_pfs_xxx(name) {
-                        results.push(path);
-                    }
-                }
-            }
-        }
-    } else if input.is_file() {
-        results.push(input.to_path_buf());
-    }
-
-    results.sort();
-
-    Ok(results)
-}
-
-/// 判断文件名是否形如 *.pfs.xxx，例如 "NUKITASHI.pfs.000"
-pub fn is_pfs_xxx(name: &str) -> bool {
-    // 若文件名含有 ".pfs." 并且后面还有其他字符，则判定为符合
-    // 例如：NUKITASHI.pfs.000
-    if let Some(pos) = name.find(".pfs.") {
-        if name.len() > pos + 5 {
-            return true;
-        }
-    }
-    false
 }
 
 /// 输入类型枚举
@@ -318,16 +210,6 @@ mod tests {
         assert!(is_file_pf8_from_filename(Path::new("/path/to/file.pfs")));
         assert!(!is_file_pf8_from_filename(Path::new("readme.txt")));
         assert!(!is_file_pf8_from_filename(Path::new("game.zip")));
-    }
-
-    #[test]
-    fn test_is_pfs_xxx() {
-        assert!(is_pfs_xxx("game.pfs.000"));
-        assert!(is_pfs_xxx("NUKITASHI.pfs.001"));
-        assert!(is_pfs_xxx("test.pfs.999"));
-        assert!(!is_pfs_xxx("game.pfs"));
-        assert!(!is_pfs_xxx("readme.txt"));
-        assert!(!is_pfs_xxx("game.pfs.")); // 末尾没有内容
     }
 
     #[test]

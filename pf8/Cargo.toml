@@ -1,0 +1,22 @@
+[package]
+name = "pf8"
+version = "0.1.0"
+edition = "2024"
+description = "A Rust library for encoding and decoding PF8 archive files"
+
+[dependencies]
+thiserror = { workspace = true }
+sha1 = { workspace = true }
+memmap2 = { workspace = true }
+walkdir = { workspace = true }
+
+# Optional dependencies for extra features
+human_bytes = { workspace = true, optional = true }
+tabled = { workspace = true, optional = true }
+
+[features]
+default = ["display"]
+display = ["human_bytes", "tabled"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
