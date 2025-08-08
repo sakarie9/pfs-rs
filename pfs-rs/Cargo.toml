@@ -1,0 +1,19 @@
+[package]
+name = "pfs-rs"
+version = "0.1.4"
+edition = "2024"
+
+[[bin]]
+name = "pfs-rs"
+path = "src/main.rs"
+
+[dependencies]
+pf8 = { path = "../pf8" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+glob = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

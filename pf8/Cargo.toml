@@ -1,0 +1,13 @@
+[package]
+name = "pf8"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+human_bytes = { workspace = true }
+log = { workspace = true }
+memmap2 = { workspace = true }
+sha1 = { workspace = true }
+tabled = { workspace = true }
+walkdir = { workspace = true }

@@ -2,10 +2,10 @@ use anyhow::Result;
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
 use log::info;
-use pfs_rs::pf8;
-use pfs_rs::util;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+mod util;
 
 /// Unpack or pack Artemis pfs archive
 #[derive(Parser, Debug)]

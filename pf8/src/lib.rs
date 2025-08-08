@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use human_bytes::human_bytes;
-use log::{debug, info};
+use log::{debug, error};
 use memmap2::Mmap;
 use sha1::{Digest, Sha1};
 use std::fmt;
@@ -12,7 +12,7 @@ use tabled::settings::{Alignment, Style};
 use tabled::{Table, Tabled};
 use walkdir::WalkDir;
 
-use crate::util;
+mod util;
 
 //    pf8 structure
 //    |magic 'pf8'
@@ -37,8 +37,6 @@ struct Pf8Entry {
     offset: u32,
     size: u32,
 }
-
-// Removed Pf8 owning-struct to avoid storing redundant full data buffer.
 
 /// Represents a file entry in the PF8 archive
 #[derive(Tabled)]
@@ -114,37 +112,44 @@ fn decrypt_pf8(buf: &[u8], start_offset: usize, size: usize, key: &[u8]) -> Vec<
 }
 
 // 只解析 PF8 文件头部分，用于列表功能
-fn parse_pf8_header_only(data: &[u8]) -> Option<(u32, Vec<Pf8Entry>)> {
+fn parse_pf8_header_only(data: &[u8]) -> Result<Vec<Pf8Entry>> {
+    if data.len() < 11 {
+        return Err(anyhow!("Data too short to parse PF8 header"));
+    } // 保证至少能读取到 index_count
     let index_size = u32::from_le_bytes([data[3], data[4], data[5], data[6]]);
     let index_count = u32::from_le_bytes([data[7], data[8], data[9], data[10]]);
 
-    // 检查数据长度是否足够读取索引部分
-    let required_size = 7 + index_size as usize;
-    if data.len() < required_size {
-        return None;
-    }
-
     let mut file_entries = Vec::new();
-    let mut cur = 0x0B;
+    let mut cur = 0x0B; // 起始位置
 
-    for _ in 0..index_count {
+    // 计算索引区域的理论结束位置
+    // 加上 0x07 是因为PF8格式中，索引数据区从偏移量7开始，总大小为 index_size
+    // 但实际解析从 0x0B 开始，所以我们直接用 cur 和这个结束位置比较
+    let index_end_pos = (7 + index_size) as usize;
+
+    // 使用 while 循环，条件是当前指针未越过索引区的结尾
+    while cur < index_end_pos && cur < data.len() {
+        // 检查是否有足够的空间读取 name_length
         if cur + 4 > data.len() {
-            break;
+            break; // 数据不足，无法继续
         }
 
         let name_length =
             u32::from_le_bytes([data[cur], data[cur + 1], data[cur + 2], data[cur + 3]]);
 
         cur += 4;
+
+        // 检查是否有足够的空间读取名字、补零和偏移/大小
         if cur + name_length as usize + 12 > data.len() {
-            break;
+            break; // 数据不足
         }
 
-        let name = String::from_utf8(data[cur..cur + name_length as usize].to_vec()).ok()?;
-        cur += name_length as usize + 4; // skip zero u32
+        let name = String::from_utf8(data[cur..cur + name_length as usize].to_vec())?;
+        cur += name_length as usize + 4; // 跳过名字和4字节的0
 
         let offset = u32::from_le_bytes([data[cur], data[cur + 1], data[cur + 2], data[cur + 3]]);
         let size = u32::from_le_bytes([data[cur + 4], data[cur + 5], data[cur + 6], data[cur + 7]]);
+        cur += 8;
 
         file_entries.push(Pf8Entry {
             name_length,
@@ -152,10 +157,18 @@ fn parse_pf8_header_only(data: &[u8]) -> Option<(u32, Vec<Pf8Entry>)> {
             offset,
             size,
         });
-        cur += 8;
     }
 
-    Some((index_count, file_entries))
+    // 校验实际解析出的数量是否和文件头中的声明一致
+    if file_entries.len() as u32 != index_count {
+        error!(
+            "Index count mismatch. Expected {}, but found {}. The file may be corrupted or truncated.",
+            index_count,
+            file_entries.len()
+        );
+    }
+
+    Ok(file_entries)
 }
 
 fn make_pf8_archive(
@@ -241,7 +254,6 @@ fn make_pf8_archive(
 /// * `inpath`: artemis pf8 文件路径
 /// * `outpath`: 输出目录
 /// * `unencrypted_filter`: 未加密的文件后缀列表
-/// * `pathlist`: 目录过滤列表
 pub fn unpack_pf8(inpath: &Path, outpath: &Path, unencrypted_filter: Vec<&str>) -> Result<()> {
     let file = File::open(inpath)?;
     let data = unsafe { Mmap::map(&file)? };
@@ -255,10 +267,9 @@ pub fn unpack_pf8(inpath: &Path, outpath: &Path, unencrypted_filter: Vec<&str>) 
     let key = make_key_pf8_from_bytes(&data, index_size);
 
     // Parse header-only entries for iteration
-    let (index_count, file_entries) =
-        parse_pf8_header_only(&data).ok_or_else(|| anyhow!("Failed to parse PF8 header"))?;
+    let file_entries = parse_pf8_header_only(&data)?;
 
-    for entry in file_entries.iter().take(index_count as usize) {
+    for entry in file_entries.iter() {
         let path = entry.name.trim_end_matches('\0');
         let offset = entry.offset as usize;
         let size = entry.size as usize;
@@ -387,14 +398,12 @@ pub fn list_pf8(input: &Path) -> Result<()> {
     file.read_exact(&mut full_header)?;
 
     // 使用只解析头部的函数
-    let (index_count, file_entries) =
-        parse_pf8_header_only(&full_header).ok_or_else(|| anyhow!("Failed to parse PF8 header"))?;
+    let file_entries = parse_pf8_header_only(&full_header)?;
 
     // 构建文件列表
     let file_list = Pf8FileList {
         files: file_entries
             .into_iter()
-            .take(index_count as usize)
             .map(|entry| Pf8File {
                 name: entry.name,
                 size: entry.size,
