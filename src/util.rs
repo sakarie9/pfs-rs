@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Result, anyhow};
 
-pub fn get_pfs_version_from_magic(path: &Path) -> Result<usize> {
+pub fn get_pfs_version_from_file(path: &Path) -> Result<usize> {
     // 打开文件
     let mut file = File::open(path)?;
 
@@ -26,6 +26,23 @@ pub fn get_pfs_version_from_magic(path: &Path) -> Result<usize> {
         Ok(6)
     } else {
         Err(anyhow!("The file is not a pf8 file, found: {:?}", header))
+    }
+}
+
+pub fn get_pfs_version_from_data(data: &[u8]) -> Result<usize> {
+    // 将字节缓冲区转换为字符串
+    let header = std::str::from_utf8(&data[0..3]).map_err(|_| anyhow!("Invalid input file!"))?;
+
+    // 判断是否为字符串 "pf8"
+    if header == "pf8" {
+        Ok(8)
+    } else if header == "pf6" {
+        Ok(6)
+    } else {
+        Err(anyhow!(
+            "The file is not a pf8 or pf6 file, found: {:?}",
+            header
+        ))
     }
 }
 

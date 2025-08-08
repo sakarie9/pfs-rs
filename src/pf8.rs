@@ -38,18 +38,7 @@ struct Pf8Entry {
     size: u32,
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-struct Pf8 {
-    magic: [u8; 3],
-    index_size: u32,
-    index_count: u32,
-    file_entries: Vec<Pf8Entry>,
-    file_count: u32,
-    filesize_offsets: Vec<u64>,
-    filesize_count_offset: u32,
-    data: Vec<u8>,
-}
+// Removed Pf8 owning-struct to avoid storing redundant full data buffer.
 
 /// Represents a file entry in the PF8 archive
 #[derive(Tabled)]
@@ -85,13 +74,11 @@ impl fmt::Display for Pf8FileList {
     }
 }
 
-fn make_key_pf8(pf8: &Pf8) -> Vec<u8> {
-    // index_data = from pf8.magic to pf8.filesize_count_offset
-    let index_data = &pf8.data[0x07..(0x07 + pf8.index_size as usize)];
-    // let index_data = [];
-    // println!("{:?}", index_data);
-    // println!("{:?}", &pf8.filesize_count_offset);
-
+fn make_key_pf8_from_bytes(all_bytes: &[u8], index_size: u32) -> Vec<u8> {
+    // index_data = from pf8.magic to pf8.filesize_count_offset (start 0x07, length index_size)
+    let start = 0x07usize;
+    let end = start + index_size as usize;
+    let index_data = &all_bytes[start..end];
     let mut hasher = Sha1::new();
     hasher.update(index_data);
     hasher.finalize().to_vec()
@@ -126,88 +113,8 @@ fn decrypt_pf8(buf: &[u8], start_offset: usize, size: usize, key: &[u8]) -> Vec<
     dst
 }
 
-fn parse_pf8(data: Vec<u8>) -> Option<Pf8> {
-    let index_size = u32::from_le_bytes([data[3], data[4], data[5], data[6]]);
-    let index_count = u32::from_le_bytes([data[7], data[8], data[9], data[10]]);
-    let mut pf8 = Pf8 {
-        magic: *b"pf8",
-        index_size,
-        index_count,
-        file_entries: Vec::new(),
-        file_count: 0,
-        filesize_offsets: Vec::new(),
-        filesize_count_offset: 0,
-        data,
-    };
-
-    let mut cur = 0x0B;
-    for _ in 0..index_count {
-        let name_length = u32::from_le_bytes([
-            pf8.data[cur],
-            pf8.data[cur + 1],
-            pf8.data[cur + 2],
-            pf8.data[cur + 3],
-        ]);
-        let name =
-            String::from_utf8(pf8.data[cur + 4..cur + 4 + name_length as usize].to_vec()).unwrap();
-        cur += name_length as usize + 8; // zero u32
-        let offset = u32::from_le_bytes([
-            pf8.data[cur],
-            pf8.data[cur + 1],
-            pf8.data[cur + 2],
-            pf8.data[cur + 3],
-        ]);
-        let size = u32::from_le_bytes([
-            pf8.data[cur + 4],
-            pf8.data[cur + 5],
-            pf8.data[cur + 6],
-            pf8.data[cur + 7],
-        ]);
-        pf8.file_entries.push(Pf8Entry {
-            name_length,
-            name,
-            offset,
-            size,
-        });
-        cur += 8;
-    }
-
-    pf8.file_count = u32::from_le_bytes([
-        pf8.data[cur],
-        pf8.data[cur + 1],
-        pf8.data[cur + 2],
-        pf8.data[cur + 3],
-    ]);
-    cur += 4;
-    for _ in 0..pf8.file_count {
-        let filesize_offset = u64::from_le_bytes([
-            pf8.data[cur],
-            pf8.data[cur + 1],
-            pf8.data[cur + 2],
-            pf8.data[cur + 3],
-            pf8.data[cur + 4],
-            pf8.data[cur + 5],
-            pf8.data[cur + 6],
-            pf8.data[cur + 7],
-        ]);
-        pf8.filesize_offsets.push(filesize_offset);
-        cur += 8;
-    }
-    pf8.filesize_count_offset = u32::from_le_bytes([
-        pf8.data[cur],
-        pf8.data[cur + 1],
-        pf8.data[cur + 2],
-        pf8.data[cur + 3],
-    ]);
-    Some(pf8)
-}
-
 // 只解析 PF8 文件头部分，用于列表功能
 fn parse_pf8_header_only(data: &[u8]) -> Option<(u32, Vec<Pf8Entry>)> {
-    if data.len() < 11 || &data[0..3] != b"pf8" {
-        return None;
-    }
-
     let index_size = u32::from_le_bytes([data[3], data[4], data[5], data[6]]);
     let index_count = u32::from_le_bytes([data[7], data[8], data[9], data[10]]);
 
@@ -310,27 +217,21 @@ fn make_pf8_archive(
         debug!("copy file {} finished!", filepath.display());
     }
 
-    let data = data_io.clone();
-    let pf8 = parse_pf8(data).unwrap();
-    let key = make_key_pf8(&pf8);
-    // println!("sha1 hash key is {}", hex::encode(&key));
-    let count = pf8.index_count as usize;
-    let file_entries = pf8.file_entries;
-
-    for entry in file_entries.iter().take(count) {
-        let path = entry.name.trim_end_matches('\0');
-        let offset = entry.offset as usize;
-        let size = entry.size as usize;
-        let mut encrypted = true;
-
-        if util::search_str_in_vec(unencrypted_filter, path) {
-            encrypted = false;
-        }
-
+    // Compute key from header bytes directly without cloning/parsing
+    let key = make_key_pf8_from_bytes(&data_io, index_size);
+    // Encrypt file payloads by iterating original filelist and computing offsets on the fly
+    let mut encrypt_offset = (index_size + 0x7) as usize;
+    for (name, size) in &filelist {
+        let path = name.trim_end_matches('\0');
+        let encrypted = !util::search_str_in_vec(unencrypted_filter, path);
         if encrypted {
-            encrypt_pf8(&mut data_io, offset, size, &key, true);
-            debug!("{} is encrypted at 0x{:X}, size {}", path, offset, size);
+            encrypt_pf8(&mut data_io, encrypt_offset, *size as usize, &key, true);
+            debug!(
+                "{} is encrypted at 0x{:X}, size {}",
+                path, encrypt_offset, size
+            );
         }
+        encrypt_offset += *size as usize;
     }
     Some(data_io)
 }
@@ -341,39 +242,24 @@ fn make_pf8_archive(
 /// * `outpath`: 输出目录
 /// * `unencrypted_filter`: 未加密的文件后缀列表
 /// * `pathlist`: 目录过滤列表
-pub fn unpack_pf8(
-    inpath: &Path,
-    outpath: &Path,
-    unencrypted_filter: Vec<&str>,
-    pathlist: Option<Vec<String>>,
-) -> Result<()> {
-    let mut is_pf8 = false;
-    match util::get_pfs_version_from_magic(inpath)? {
-        8 => {
-            is_pf8 = true;
-        }
-        6 => {}
-        _ => {
-            return Err(anyhow!("Input file {:?} is not a vaild pfs file!", inpath));
-        }
-    }
-
+pub fn unpack_pf8(inpath: &Path, outpath: &Path, unencrypted_filter: Vec<&str>) -> Result<()> {
     let file = File::open(inpath)?;
     let data = unsafe { Mmap::map(&file)? };
-    let pf8 = parse_pf8(data.to_vec()).unwrap();
-    let key = make_key_pf8(&pf8);
-    let count = pf8.index_count as usize;
-    let file_entries = pf8.file_entries;
 
-    for entry in file_entries.iter().take(count) {
+    // 判断是否为 pf8
+    let pfs_version = util::get_pfs_version_from_data(&data)?;
+    let is_pf8 = pfs_version == 8;
+
+    // Read index_size and build key without copying whole file
+    let index_size = u32::from_le_bytes([data[3], data[4], data[5], data[6]]);
+    let key = make_key_pf8_from_bytes(&data, index_size);
+
+    // Parse header-only entries for iteration
+    let (index_count, file_entries) =
+        parse_pf8_header_only(&data).ok_or_else(|| anyhow!("Failed to parse PF8 header"))?;
+
+    for entry in file_entries.iter().take(index_count as usize) {
         let path = entry.name.trim_end_matches('\0');
-        if let Some(ref paths) = pathlist {
-            if !paths.contains(&path.to_string()) {
-                println!("skipped! {}", path);
-                info!("skipped! {}", path);
-                continue;
-            }
-        }
         let offset = entry.offset as usize;
         let size = entry.size as usize;
         let mut encrypted = true;

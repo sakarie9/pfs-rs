@@ -68,7 +68,7 @@ fn command_unpack(
 
     for i in input {
         info!("Unpacking {:?}", i);
-        pf8::unpack_pf8(i, &output_path, filters.to_vec(), None)?;
+        pf8::unpack_pf8(i, &output_path, filters.to_vec())?;
         info!("Unpacked {:?} to {}", i, output_path.display());
     }
 
