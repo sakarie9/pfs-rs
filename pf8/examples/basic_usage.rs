@@ -36,7 +36,7 @@ fn main() -> Result<()> {
 
     // Example 2: Reading archive information
     println!("\n2. Reading archive information...");
-    let archive = Pf8Archive::open(&archive_path)?;
+    let mut archive = Pf8Archive::open(&archive_path)?;
     println!("   Archive contains {} files:", archive.len());
 
     for entry in archive.entries()? {

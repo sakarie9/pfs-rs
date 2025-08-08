@@ -33,7 +33,7 @@ fn test_create_and_read_simple_archive() {
     assert!(archive_path.exists());
 
     // Read archive and verify contents
-    let archive = Pf8Archive::open_with_patterns(&archive_path, &[".txt"]).unwrap();
+    let mut archive = Pf8Archive::open_with_patterns(&archive_path, &[".txt"]).unwrap();
 
     assert_eq!(archive.len(), 3);
     assert!(archive.contains("file1.txt"));
@@ -104,7 +104,7 @@ fn test_builder_add_file_as() {
         .unwrap();
     builder.write_to_file(&archive_path).unwrap();
 
-    let archive = Pf8Archive::open(&archive_path).unwrap();
+    let mut archive = Pf8Archive::open(&archive_path).unwrap();
     assert!(archive.contains("custom/path/file.txt"));
 
     let content = archive.read_file("custom/path/file.txt").unwrap();
@@ -128,7 +128,7 @@ fn test_encryption_patterns() {
     builder.write_to_file(&archive_path).unwrap();
 
     // Open with same patterns
-    let archive = Pf8Archive::open_with_patterns(&archive_path, &[".txt"]).unwrap();
+    let mut archive = Pf8Archive::open_with_patterns(&archive_path, &[".txt"]).unwrap();
 
     // Verify we can read both files
     let config_content = archive.read_file("config.txt").unwrap();
@@ -172,7 +172,7 @@ fn test_reader_low_level_api() {
     create_from_dir(&input_dir, &archive_path).unwrap();
 
     // Test low-level reader API
-    let reader = Pf8Reader::open(&archive_path).unwrap();
+    let mut reader = Pf8Reader::open(&archive_path).unwrap();
 
     assert_eq!(reader.len(), 1);
     assert!(!reader.is_empty());

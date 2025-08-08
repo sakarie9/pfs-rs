@@ -73,27 +73,62 @@ impl Pf8Archive {
     }
 
     /// Reads a file's data by path
-    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>> {
+    pub fn read_file<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>> {
         self.reader.read_file(path)
     }
 
-    /// Reads a file's data into the provided buffer
-    pub fn read_file_into<P: AsRef<Path>>(&self, path: P, buffer: &mut [u8]) -> Result<()> {
-        self.reader.read_file_into(path, buffer)
+    /// Reads a file's data with streaming to minimize memory allocation
+    pub fn read_file_streaming<P: AsRef<Path>, F>(&mut self, path: P, callback: F) -> Result<()>
+    where
+        F: FnMut(&[u8]) -> Result<()>,
+    {
+        self.reader.read_file_streaming(path, callback)
+    }
+
+    /// Reads a file's data with streaming and custom buffer size
+    pub fn read_file_streaming_with_buffer_size<P: AsRef<Path>, F>(
+        &mut self,
+        path: P,
+        buffer_size: usize,
+        callback: F,
+    ) -> Result<()>
+    where
+        F: FnMut(&[u8]) -> Result<()>,
+    {
+        self.reader
+            .read_file_streaming_with_buffer_size(path, buffer_size, callback)
     }
 
     /// Extracts all files to the specified directory
-    pub fn extract_all<P: AsRef<Path>>(&self, output_dir: P) -> Result<()> {
+    pub fn extract_all<P: AsRef<Path>>(&mut self, output_dir: P) -> Result<()> {
         self.reader.extract_all(output_dir)
+    }
+
+    /// Extracts all files to the specified directory with specified buffer size for memory optimization
+    pub fn extract_all_with_buffer_size<P: AsRef<Path>>(
+        &mut self,
+        output_dir: P,
+        buffer_size: usize,
+    ) -> Result<()> {
+        self.reader
+            .extract_all_with_buffer_size(output_dir, buffer_size)
     }
 
     /// Extracts a specific file to the given path
     pub fn extract_file<P: AsRef<Path>, Q: AsRef<Path>>(
-        &self,
+        &mut self,
         archive_path: P,
         output_path: Q,
     ) -> Result<()> {
-        self.reader.extract_file(archive_path, output_path)
+        let data = self.read_file(archive_path)?;
+
+        // Create parent directories if they don't exist
+        if let Some(parent) = output_path.as_ref().parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(output_path, data)?;
+        Ok(())
     }
 
     /// Gets the underlying reader (for advanced use cases)
@@ -106,7 +141,7 @@ impl Pf8Archive {
 
 /// Extracts a PF8 archive to the specified directory
 pub fn extract<P: AsRef<Path>, Q: AsRef<Path>>(archive_path: P, output_dir: Q) -> Result<()> {
-    let archive = Pf8Archive::open(archive_path)?;
+    let mut archive = Pf8Archive::open(archive_path)?;
     archive.extract_all(output_dir)
 }
 
@@ -116,7 +151,7 @@ pub fn extract_with_patterns<P: AsRef<Path>, Q: AsRef<Path>>(
     output_dir: Q,
     unencrypted_patterns: &[&str],
 ) -> Result<()> {
-    let archive = Pf8Archive::open_with_patterns(archive_path, unencrypted_patterns)?;
+    let mut archive = Pf8Archive::open_with_patterns(archive_path, unencrypted_patterns)?;
     archive.extract_all(output_dir)
 }
 

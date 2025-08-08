@@ -22,7 +22,7 @@
 //! # fs::write(input_dir.join("test.txt"), b"test content").unwrap();
 //! # create_from_dir(&input_dir, &archive_path)?;
 //! // Open an existing PF6/PF8 archive
-//! let archive = Pf8Archive::open(&archive_path)?;
+//! let mut archive = Pf8Archive::open(&archive_path)?;
 //!
 //! // List all files in the archive
 //! for entry in archive.entries()? {

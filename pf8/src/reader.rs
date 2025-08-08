@@ -4,17 +4,22 @@ use crate::crypto;
 use crate::entry::Pf8Entry;
 use crate::error::{Error, Result};
 use crate::format::{self, ArchiveFormat};
-use memmap2::Mmap;
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 const UNENCRYPTED_FILTER: [&str; 2] = ["mp4", "flv"];
 
-/// A reader for PF6/PF8 archives that provides streaming access to files
+/// Optimized reader for PF6/PF8 archives with minimal memory usage
+///
+/// This reader minimizes memory usage by:
+/// - Not memory-mapping the entire file
+/// - Reading file data on-demand from disk
+/// - Supporting streaming operations with configurable buffers
 pub struct Pf8Reader {
-    /// Memory-mapped archive data
-    data: Mmap,
+    /// File handle for reading archive data
+    file: File,
     /// List of file entries
     entries: Vec<Pf8Entry>,
     /// Lookup map for fast entry access by path
@@ -26,11 +31,9 @@ pub struct Pf8Reader {
 }
 
 impl Pf8Reader {
-    /// Opens a PF6/PF8 archive for reading
+    /// Opens a PF6/PF8 archive for reading with minimal memory usage
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let file = File::open(path)?;
-        let data = unsafe { Mmap::map(&file)? };
-        Self::from_data(data, &UNENCRYPTED_FILTER)
+        Self::open_with_unencrypted_patterns(path, &UNENCRYPTED_FILTER)
     }
 
     /// Creates a reader with custom unencrypted patterns
@@ -38,21 +41,27 @@ impl Pf8Reader {
         path: P,
         unencrypted_patterns: &[&str],
     ) -> Result<Self> {
-        let file = File::open(path)?;
-        let data = unsafe { Mmap::map(&file)? };
-        Self::from_data(data, unencrypted_patterns)
-    }
+        let mut file = File::open(path)?;
 
-    /// Creates a reader with custom unencrypted patterns
-    pub fn from_data(data: Mmap, unencrypted_patterns: &[&str]) -> Result<Self> {
-        let (raw_entries, format) = format::parse_entries(&data)?;
+        // Read only the header and index data into memory
+        let header_size = 11; // minimum header size
+        let mut header_buffer = vec![0u8; header_size];
+        file.read_exact(&mut header_buffer)?;
+
+        let _format = format::validate_magic(&header_buffer)?;
+        let index_size = format::read_u32_le(&header_buffer, format::offsets::INDEX_SIZE)?;
+
+        // Read the entire index into memory
+        let total_index_size = format::offsets::INDEX_DATA_START + index_size as usize;
+        let mut index_buffer = vec![0u8; total_index_size];
+        file.seek(SeekFrom::Start(0))?;
+        file.read_exact(&mut index_buffer)?;
+
+        let (raw_entries, format) = format::parse_entries(&index_buffer)?;
 
         // Generate encryption key only for PF8 format
         let encryption_key = match format {
-            ArchiveFormat::Pf8 => {
-                let index_size = format::get_index_size(&data)?;
-                Some(crypto::generate_key(&data, index_size))
-            }
+            ArchiveFormat::Pf8 => Some(crypto::generate_key(&index_buffer, index_size)),
             ArchiveFormat::Pf6 => None,
         };
 
@@ -67,7 +76,7 @@ impl Pf8Reader {
         }
 
         Ok(Self {
-            data,
+            file,
             entries,
             entry_map,
             encryption_key,
@@ -114,28 +123,113 @@ impl Pf8Reader {
     }
 
     /// Reads a file's data by path
-    pub fn read_file<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>> {
-        let entry = self
-            .get_entry(path)
-            .ok_or_else(|| Error::FileNotFound("File not found".to_string()))?;
+    pub fn read_file<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>> {
+        // Get entry info and copy values to avoid borrow conflicts
+        let (offset, size, is_encrypted) = {
+            let entry = self
+                .get_entry(path)
+                .ok_or_else(|| Error::FileNotFound("File not found".to_string()))?;
+            (entry.offset(), entry.size(), entry.is_encrypted())
+        };
 
-        entry.read(&self.data, self.encryption_key.as_deref())
+        self.read_entry_data_by_params(offset, size, is_encrypted)
     }
 
-    /// Reads a file's data into the provided buffer
-    pub fn read_file_into<P: AsRef<Path>>(&self, path: P, buffer: &mut [u8]) -> Result<()> {
-        let entry = self
-            .get_entry(path)
-            .ok_or_else(|| Error::FileNotFound("File not found".to_string()))?;
-
-        entry.read_into(&self.data, buffer, self.encryption_key.as_deref())
+    /// Reads a file's data with streaming to minimize memory allocation
+    pub fn read_file_streaming<P: AsRef<Path>, F>(&mut self, path: P, callback: F) -> Result<()>
+    where
+        F: FnMut(&[u8]) -> Result<()>,
+    {
+        self.read_file_streaming_with_buffer_size(path, 64 * 1024, callback)
     }
 
-    /// Extracts all files to the specified directory
-    pub fn extract_all<P: AsRef<Path>>(&self, output_dir: P) -> Result<()> {
+    /// Reads a file's data with streaming and custom buffer size
+    pub fn read_file_streaming_with_buffer_size<P: AsRef<Path>, F>(
+        &mut self,
+        path: P,
+        buffer_size: usize,
+        mut callback: F,
+    ) -> Result<()>
+    where
+        F: FnMut(&[u8]) -> Result<()>,
+    {
+        // Get entry info and copy values to avoid borrow conflicts
+        let (file_size, start_offset, is_encrypted) = {
+            let entry = self
+                .get_entry(path)
+                .ok_or_else(|| Error::FileNotFound("File not found".to_string()))?;
+            (
+                entry.size() as usize,
+                entry.offset() as u64,
+                entry.is_encrypted(),
+            )
+        };
+
+        self.file.seek(SeekFrom::Start(start_offset))?;
+
+        if file_size <= buffer_size {
+            // Small file: read directly
+            let mut data = vec![0u8; file_size];
+            self.file.read_exact(&mut data)?;
+
+            if is_encrypted {
+                if let Some(key) = self.encryption_key.as_deref() {
+                    for (i, byte) in data.iter_mut().enumerate() {
+                        *byte ^= key[i % key.len()];
+                    }
+                } else {
+                    return Err(Error::Crypto(
+                        "File is encrypted but no key provided".to_string(),
+                    ));
+                }
+            }
+
+            callback(&data)?;
+        } else {
+            // Large file: stream in chunks
+            let mut buffer = vec![0u8; buffer_size];
+            let mut bytes_read = 0;
+
+            while bytes_read < file_size {
+                let chunk_size = (file_size - bytes_read).min(buffer_size);
+                self.file.read_exact(&mut buffer[..chunk_size])?;
+
+                if is_encrypted {
+                    if let Some(key) = self.encryption_key.as_deref() {
+                        // Decrypt chunk in-place
+                        for (i, byte) in buffer[..chunk_size].iter_mut().enumerate() {
+                            *byte ^= key[(bytes_read + i) % key.len()];
+                        }
+                    } else {
+                        return Err(Error::Crypto(
+                            "File is encrypted but no key provided".to_string(),
+                        ));
+                    }
+                }
+
+                callback(&buffer[..chunk_size])?;
+                bytes_read += chunk_size;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Extracts all files to the specified directory with memory optimization
+    pub fn extract_all<P: AsRef<Path>>(&mut self, output_dir: P) -> Result<()> {
+        self.extract_all_with_buffer_size(output_dir, 1024 * 1024) // 1MB default buffer
+    }
+
+    /// Extracts all files with specified buffer size for memory optimization
+    pub fn extract_all_with_buffer_size<P: AsRef<Path>>(
+        &mut self,
+        output_dir: P,
+        buffer_size: usize,
+    ) -> Result<()> {
         let output_dir = output_dir.as_ref();
+        let mut buffer = vec![0u8; buffer_size];
 
-        for entry in &self.entries {
+        for entry in &self.entries.clone() {
             let file_path = output_dir.join(entry.path());
 
             // Create parent directories if they don't exist
@@ -143,27 +237,107 @@ impl Pf8Reader {
                 std::fs::create_dir_all(parent)?;
             }
 
-            let data = entry.read(&self.data, self.encryption_key.as_deref())?;
-            std::fs::write(file_path, data)?;
+            self.extract_entry_streaming(&entry, &file_path, &mut buffer)?;
         }
 
         Ok(())
     }
 
-    /// Extracts a specific file to the given path
-    pub fn extract_file<P: AsRef<Path>, Q: AsRef<Path>>(
-        &self,
-        archive_path: P,
-        output_path: Q,
+    /// Extracts a single entry using streaming to minimize memory usage
+    fn extract_entry_streaming<P: AsRef<Path>>(
+        &mut self,
+        entry: &Pf8Entry,
+        output_path: P,
+        buffer: &mut [u8],
     ) -> Result<()> {
-        let data = self.read_file(archive_path)?;
+        use std::io::Write;
 
-        // Create parent directories if they don't exist
-        if let Some(parent) = output_path.as_ref().parent() {
-            std::fs::create_dir_all(parent)?;
+        let mut output_file = File::create(output_path)?;
+
+        // Copy entry info to avoid borrow conflicts
+        let (file_size, start_offset, is_encrypted) = {
+            (
+                entry.size() as usize,
+                entry.offset() as u64,
+                entry.is_encrypted(),
+            )
+        };
+
+        self.file.seek(SeekFrom::Start(start_offset))?;
+
+        if file_size <= buffer.len() {
+            // Small file: read directly into buffer
+            let mut temp_buffer = vec![0u8; file_size];
+            self.file.read_exact(&mut temp_buffer)?;
+
+            if is_encrypted {
+                if let Some(key) = self.encryption_key.as_deref() {
+                    for (i, byte) in temp_buffer.iter_mut().enumerate() {
+                        *byte ^= key[i % key.len()];
+                    }
+                } else {
+                    return Err(Error::Crypto(
+                        "File is encrypted but no key provided".to_string(),
+                    ));
+                }
+            }
+
+            output_file.write_all(&temp_buffer)?;
+        } else {
+            // Large file: stream in chunks
+            let buffer_size = buffer.len();
+            let mut bytes_written = 0;
+
+            while bytes_written < file_size {
+                let chunk_size = (file_size - bytes_written).min(buffer_size);
+                self.file.read_exact(&mut buffer[..chunk_size])?;
+
+                if is_encrypted {
+                    if let Some(key) = self.encryption_key.as_deref() {
+                        for (i, byte) in buffer[..chunk_size].iter_mut().enumerate() {
+                            *byte ^= key[(bytes_written + i) % key.len()];
+                        }
+                    } else {
+                        return Err(Error::Crypto(
+                            "File is encrypted but no key provided".to_string(),
+                        ));
+                    }
+                }
+
+                output_file.write_all(&buffer[..chunk_size])?;
+                bytes_written += chunk_size;
+            }
         }
 
-        std::fs::write(output_path, data)?;
         Ok(())
+    }
+
+    /// Reads entry data from file by parameters
+    fn read_entry_data_by_params(
+        &mut self,
+        offset: u32,
+        size: u32,
+        is_encrypted: bool,
+    ) -> Result<Vec<u8>> {
+        let start_offset = offset as u64;
+        let size = size as usize;
+
+        self.file.seek(SeekFrom::Start(start_offset))?;
+        let mut data = vec![0u8; size];
+        self.file.read_exact(&mut data)?;
+
+        if is_encrypted {
+            if let Some(key) = self.encryption_key.as_deref() {
+                for (i, byte) in data.iter_mut().enumerate() {
+                    *byte ^= key[i % key.len()];
+                }
+            } else {
+                return Err(Error::Crypto(
+                    "File is encrypted but no key provided".to_string(),
+                ));
+            }
+        }
+
+        Ok(data)
     }
 }
