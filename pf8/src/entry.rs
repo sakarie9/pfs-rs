@@ -20,7 +20,7 @@ pub struct Pf8Entry {
 impl Pf8Entry {
     /// Creates a new entry from raw data
     pub fn from_raw(raw: RawEntry, unencrypted_patterns: &[&str]) -> Self {
-        let path = utils::pf8_path_to_pathbuf(&raw.name.trim_end_matches('\0'));
+        let path = utils::pf8_path_to_pathbuf(raw.name.trim_end_matches('\0'));
         let encrypted = !utils::matches_any_pattern(&raw.name, unencrypted_patterns);
 
         Self {
@@ -36,7 +36,7 @@ impl Pf8Entry {
         unencrypted_patterns: &[&str],
         format: ArchiveFormat,
     ) -> Self {
-        let path = utils::pf8_path_to_pathbuf(&raw.name.trim_end_matches('\0'));
+        let path = utils::pf8_path_to_pathbuf(raw.name.trim_end_matches('\0'));
         // In PF6 format, no files are encrypted
         let encrypted = match format {
             ArchiveFormat::Pf6 => false,

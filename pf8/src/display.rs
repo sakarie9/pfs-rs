@@ -77,7 +77,7 @@ impl fmt::Display for FileList {
             human_bytes(total_size as f64)
         );
 
-        write!(f, "{}\n\n{}", table, footer)
+        write!(f, "{table}\n\n{footer}")
     }
 }
 
@@ -89,7 +89,7 @@ pub fn list_archive<P: AsRef<Path>>(archive_path: P) -> Result<()> {
 
     println!("{}", archive_path.as_ref().display());
     println!();
-    println!("{}", file_list);
+    println!("{file_list}");
 
     Ok(())
 }
@@ -105,7 +105,7 @@ pub fn list_archive_with_patterns<P: AsRef<Path>>(
 
     println!("{}", archive_path.as_ref().display());
     println!();
-    println!("{}", file_list);
+    println!("{file_list}");
 
     Ok(())
 }

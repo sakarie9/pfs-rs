@@ -67,7 +67,7 @@ fn command_unpack_paths(
             output.to_path_buf()
         };
         fs::create_dir_all(&output_path)?;
-        info!("Unpacking {:?} to {:?}", path, output_path);
+        info!("Unpacking {path:?} to {output_path:?}");
 
         let mut archive = if let Some(filters) = filters {
             pf8::Pf8Archive::open_with_patterns(path, filters)?
@@ -104,7 +104,7 @@ fn command_pack(
     } else {
         output
     };
-    info!("Packing {:?} to {:?}", input, output_file);
+    info!("Packing {input:?} to {output_file:?}");
 
     match filters {
         Some(filters) => pf8::create_from_dir_with_patterns(input, output_file, filters),
@@ -120,7 +120,7 @@ fn command_pack_multiple_inputs(
     output: &Path,
     filters: Option<&[&str]>,
 ) -> Result<()> {
-    info!("Packing to {:?}", output);
+    info!("Packing to {output:?}");
 
     // Use new pf8 library API with builder
     let mut builder = pf8::Pf8Builder::new();
@@ -203,7 +203,7 @@ fn main() -> Result<()> {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Error processing inputs: {}", e);
+                        eprintln!("Error processing inputs: {e}");
                         std::process::exit(1);
                     }
                 }

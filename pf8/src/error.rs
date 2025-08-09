@@ -27,12 +27,12 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Io(err) => write!(f, "I/O error: {}", err),
-            Error::InvalidFormat(msg) => write!(f, "Invalid PF8 format: {}", msg),
-            Error::FileNotFound(name) => write!(f, "File not found in archive: {}", name),
-            Error::InvalidUtf8(err) => write!(f, "Invalid UTF-8 in file name: {}", err),
-            Error::Crypto(msg) => write!(f, "Encryption/decryption error: {}", msg),
-            Error::Corrupted(msg) => write!(f, "Archive is corrupted: {}", msg),
+            Error::Io(err) => write!(f, "I/O error: {err}"),
+            Error::InvalidFormat(msg) => write!(f, "Invalid PF8 format: {msg}"),
+            Error::FileNotFound(name) => write!(f, "File not found in archive: {name}"),
+            Error::InvalidUtf8(err) => write!(f, "Invalid UTF-8 in file name: {err}"),
+            Error::Crypto(msg) => write!(f, "Encryption/decryption error: {msg}"),
+            Error::Corrupted(msg) => write!(f, "Archive is corrupted: {msg}"),
         }
     }
 }

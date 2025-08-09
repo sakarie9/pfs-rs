@@ -56,7 +56,7 @@ pub fn get_pfs_basepath(input: &Path) -> Result<PathBuf> {
 /// output: Ok(workdir/test/root.pfs.000)
 pub fn try_get_next_nonexist_pfs(dir: &Path, base: &str) -> Result<PathBuf> {
     // return root.pfs if not exist
-    let filename = format!("{}.pfs", base);
+    let filename = format!("{base}.pfs");
     let path = dir.join(filename);
     if !path.exists() {
         return Ok(path);
@@ -64,7 +64,7 @@ pub fn try_get_next_nonexist_pfs(dir: &Path, base: &str) -> Result<PathBuf> {
     // return root.pfs.xxx if not exist
     let mut i = 0;
     loop {
-        let filename = format!("{}.pfs.{:03}", base, i);
+        let filename = format!("{base}.pfs.{i:03}");
         let path = dir.join(filename);
         if !path.exists() {
             return Ok(path);

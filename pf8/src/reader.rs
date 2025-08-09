@@ -214,7 +214,7 @@ impl Pf8Reader {
                 std::fs::create_dir_all(parent)?;
             }
 
-            self.extract_entry_streaming(&entry, &file_path, &mut buffer)?;
+            self.extract_entry_streaming(entry, &file_path, &mut buffer)?;
         }
 
         Ok(())
