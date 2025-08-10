@@ -7,7 +7,6 @@ description = "A Rust library for encoding and decoding PF8 archive files"
 [dependencies]
 thiserror = { workspace = true }
 sha1 = { workspace = true }
-memmap2 = { workspace = true }
 walkdir = { workspace = true }
 
 # Optional dependencies for extra features
