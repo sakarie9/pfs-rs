@@ -11,7 +11,7 @@ use tempfile::TempDir;
 fn test_create_and_read_simple_archive() {
     let temp_dir = TempDir::new().unwrap();
     let input_dir = temp_dir.path().join("input");
-    let archive_path = temp_dir.path().join("test.pf8");
+    let archive_path = temp_dir.path().join("test.pfs");
     let output_dir = temp_dir.path().join("output");
 
     // Create input directory with some test files
@@ -71,7 +71,7 @@ fn test_create_and_read_simple_archive() {
 fn test_convenience_functions() {
     let temp_dir = TempDir::new().unwrap();
     let input_dir = temp_dir.path().join("input");
-    let archive_path = temp_dir.path().join("test.pf8");
+    let archive_path = temp_dir.path().join("test.pfs");
     let output_dir = temp_dir.path().join("output");
 
     // Create input directory
@@ -94,7 +94,7 @@ fn test_convenience_functions() {
 fn test_builder_add_file_as() {
     let temp_dir = TempDir::new().unwrap();
     let input_file = temp_dir.path().join("input.txt");
-    let archive_path = temp_dir.path().join("test.pf8");
+    let archive_path = temp_dir.path().join("test.pfs");
 
     fs::write(&input_file, b"File content").unwrap();
 
@@ -115,7 +115,7 @@ fn test_builder_add_file_as() {
 fn test_encryption_patterns() {
     let temp_dir = TempDir::new().unwrap();
     let input_dir = temp_dir.path().join("input");
-    let archive_path = temp_dir.path().join("test.pf8");
+    let archive_path = temp_dir.path().join("test.pfs");
 
     fs::create_dir_all(&input_dir).unwrap();
     fs::write(input_dir.join("config.txt"), b"Config data").unwrap();
@@ -141,7 +141,7 @@ fn test_encryption_patterns() {
 #[test]
 fn test_empty_archive() {
     let temp_dir = TempDir::new().unwrap();
-    let archive_path = temp_dir.path().join("empty.pf8");
+    let archive_path = temp_dir.path().join("empty.pfs");
 
     // Try to create empty archive (should fail)
     let builder = Pf8Builder::new();
@@ -163,7 +163,7 @@ fn test_file_not_found_error() {
 fn test_reader_low_level_api() {
     let temp_dir = TempDir::new().unwrap();
     let input_dir = temp_dir.path().join("input");
-    let archive_path = temp_dir.path().join("test.pf8");
+    let archive_path = temp_dir.path().join("test.pfs");
 
     fs::create_dir_all(&input_dir).unwrap();
     fs::write(input_dir.join("test.txt"), b"Test content").unwrap();

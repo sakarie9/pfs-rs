@@ -7,7 +7,7 @@ fn main() -> Result<()> {
     // Create a temporary directory structure for demonstration
     let temp_dir = std::env::temp_dir().join("pf8_example");
     let input_dir = temp_dir.join("input");
-    let archive_path = temp_dir.join("example.pf8");
+    let archive_path = temp_dir.join("example.pfs");
     let output_dir = temp_dir.join("output");
 
     // Clean up any existing files
@@ -63,7 +63,7 @@ fn main() -> Result<()> {
 
     // Example 5: Using builder with custom encryption settings
     println!("\n5. Creating archive with custom encryption settings...");
-    let archive_path2 = temp_dir.join("custom.pf8");
+    let archive_path2 = temp_dir.join("custom.pfs");
     let mut builder = Pf8Builder::new();
 
     // Configure which files should NOT be encrypted
@@ -92,7 +92,7 @@ fn main() -> Result<()> {
 
     // Example 7: Adding individual files with custom paths
     println!("\n7. Using builder to create archive with custom structure...");
-    let archive_path3 = temp_dir.join("structured.pf8");
+    let archive_path3 = temp_dir.join("structured.pfs");
     let mut structured_builder = Pf8Builder::new();
 
     structured_builder.add_file_as(input_dir.join("readme.txt"), "docs/README.txt")?;

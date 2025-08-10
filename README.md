@@ -1,19 +1,19 @@
-# pfs_rs
+# pfs-rs
 
 English | [中文](./README_CN.md)
 
-Artemis .pfs file unpacker and packer written in Rust.
+Artemis pfs file unpacker and packer written in Rust.
 
 ## Description
 
-> Artemis is a game engine. It uses .pfs files to store game assets.
+> Artemis is a game engine. It uses pfs files to store game assets.
 
-This project provides tools to unpack and pack .pfs files used by the Artemis system. It is written entirely in Rust.
+This project provides tools to unpack and pack pfs files used by the Artemis system. It is written entirely in Rust.
 
 ## Features
 
-- Unpack .pfs files
-- Pack .pfs files
+- Unpack pfs files
+- Pack pfs files
 
 ## Usage
 

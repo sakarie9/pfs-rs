@@ -1,19 +1,19 @@
-# pfs_rs
+# pfs-rs
 
 [English](./README.md) | 中文
 
-一个用 Rust 编写的 Artemis .pfs 文件解包器和打包器。
+一个用 Rust 编写的 Artemis pfs 文件解包器和打包器。
 
 ## 描述
 
-> Artemis 是一个游戏引擎。它使用 .pfs 文件来存储游戏资源。
+> Artemis 是一个游戏引擎。它使用 pfs 文件来存储游戏资源。
 
-本项目提供了用于解包和打包 Artemis 系统使用的 .pfs 文件的工具。它完全用 Rust 编写。
+本项目提供了用于解包和打包 Artemis 系统使用的 pfs 文件的工具。它完全用 Rust 编写。
 
 ## 功能
 
-- 解包 .pfs 文件
-- 打包 .pfs 文件
+- 解包 pfs 文件
+- 打包 pfs 文件
 
 ## 用法
 

@@ -6,6 +6,8 @@
 
 A comprehensive Rust library for encoding and decoding PF6 and PF8 archive files. This library provides both high-level convenience APIs and low-level control for working with these archive formats.
 
+> PF6 and PF8 are proprietary archive formats for the [Artemis](https://www.ies-net.com/) galgame engine.
+
 ## Features
 
 - **Multiple Format Support**:
@@ -39,7 +41,7 @@ use pf8::{extract, create_from_dir, Result};
 
 fn main() -> Result<()> {
     // Extract an archive
-    extract("archive.pf8", "output_directory")?;
+    extract("root.pfs", "output_directory")?;
 
     // Create an archive from a directory
     create_from_dir("input_directory", "new_archive.pfs")?;
@@ -55,7 +57,7 @@ use pf8::{Pf8Archive, Result};
 
 fn main() -> Result<()> {
     // Open an existing PF8 archive
-    let archive = Pf8Archive::open("archive.pfs")?;
+    let archive = Pf8Archive::open("root.pfs")?;
 
     // List all files in the archive
     for entry in archive.entries()? {
@@ -66,9 +68,9 @@ fn main() -> Result<()> {
     archive.extract_all("output_dir")?;
 
     // Extract a specific file
-    if let Some(entry) = archive.get_entry("some/file.txt")? {
+    if let Some(entry) = archive.get_entry("system/table/list_windows.tbl")? {
         let data = entry.read(archive.reader().data(), Some(archive.reader().encryption_key()))?;
-        std::fs::write("extracted_file.txt", data)?;
+        std::fs::write("extracted_list_windows.tbl", data)?;
     }
 
     Ok(())
@@ -85,16 +87,16 @@ fn main() -> Result<()> {
     let mut builder = Pf8Builder::new();
 
     // Configure encryption filters (files matching these patterns won't be encrypted)
-    // Ignore will use default unencrypted lists
+    // Ignore this will use default unencrypted lists
     // builder.unencrypted_extensions(&[".mp4", ".flv"]);
 
     // Add files and directories
-    builder.add_dir("input_directory")?;
+    builder.add_dir("scripts")?;
     builder.add_file("single_file.txt")?;
-    builder.add_file_as("config.toml", "settings/config.toml")?;
+    builder.add_file_as("list_windows.tbl", "system/table/list_windows.tbl")?;
 
     // Write the archive to a file
-    builder.write_to_file("output.pfs")?;
+    builder.write_to_file("root.pfs")?;
 
     Ok(())
 }
@@ -108,7 +110,7 @@ With the `display` feature enabled, you can pretty-print archive contents:
 use pf8::display::list_archive;
 
 fn main() -> pf8::Result<()> {
-    list_archive("archive.pfs")?;
+    list_archive("root.pfs")?;
     Ok(())
 }
 ```
@@ -121,8 +123,8 @@ archive.pfs
 | File              | Size      |
 |-------------------|-----------|
 | config/game.ini   | 1.2 KB    |
-| data/level1.dat   | 45.6 MB   |
-| scripts/main.lua  | 3.4 KB    |
+| image/image1.png  | 45.6 MB   |
+| scripts/main.ast  | 3.4 KB    |
 
 Total: 3 files, Total size: 45.6 MB
 ```
@@ -135,7 +137,7 @@ Total: 3 files, Total size: 45.6 MB
 use pf8::{Pf8Reader, Result};
 
 fn main() -> Result<()> {
-    let reader = Pf8Reader::open("archive.pfs")?;
+    let reader = Pf8Reader::open("root.pfs")?;
     
     for entry in reader.entries() {
         println!("File: {}", entry.path().display());
@@ -159,13 +161,13 @@ use pf8::{Pf8Archive, Pf8Builder, Result};
 fn main() -> Result<()> {
     // When reading, specify which files should be unencrypted
     let unencrypted_patterns = &[".mp4", ".flv"];
-    let archive = Pf8Archive::open_with_patterns("archive.pfs", unencrypted_patterns)?;
+    let archive = Pf8Archive::open_with_patterns("root.pfs", unencrypted_patterns)?;
     
     // When creating, specify patterns for unencrypted files
     let mut builder = Pf8Builder::new();
     builder.unencrypted_patterns(&[".mp4", ".flv"]);
     builder.add_dir("src")?;
-    builder.write_to_file("source.pf8")?;
+    builder.write_to_file("root.pfs")?;
     
     Ok(())
 }
@@ -206,7 +208,7 @@ The library provides comprehensive error types:
 use pf8::{Error, Result};
 
 fn handle_errors() -> Result<()> {
-    match pf8::extract("archive.pfs", "output") {
+    match pf8::extract("root.pfs", "output") {
         Ok(()) => println!("Extraction successful"),
         Err(Error::Io(e)) => eprintln!("I/O error: {}", e),
         Err(Error::InvalidFormat(msg)) => eprintln!("Invalid format: {}", msg),
@@ -231,11 +233,10 @@ The PF8 format is a custom archive format with the following features:
 
 ## Performance Considerations
 
-- Use memory mapping for large archives (automatically handled by `Pf8Reader`)
-- Consider streaming operations for very large files
+- Streaming operations for files read/write
 - The `display` feature adds dependencies - disable if not needed
-- Encryption/decryption is performed in-memory - consider available RAM for large files
+- Encryption/decryption is performed in-memory
 
 ## License
 
-This project is licensed under the GPL-3.0 license - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT license - see the [LICENSE](LICENSE) file for details.

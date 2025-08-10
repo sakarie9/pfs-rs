@@ -2,7 +2,11 @@
 name = "pf8"
 version = "0.1.0"
 edition = "2024"
-description = "A Rust library for encoding and decoding PF8 archive files"
+description = "A Rust library for encoding and decoding artemis PF8 archive files"
+keywords = ["pfs", "pf8", "archive", "galgame"]
+repository = "https://github.com/sakarie9/pfs-rs"
+license = "MIT"
+readme = "README.md"
 
 [dependencies]
 thiserror = { workspace = true }
