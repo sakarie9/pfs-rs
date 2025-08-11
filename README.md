@@ -18,7 +18,7 @@ This project provides tools to unpack and pack pfs files used by the Artemis sys
 ## Usage
 
 ```plain
-Usage: pfs_rs [OPTIONS] [COMMAND]
+Usage: pfs-rs [OPTIONS] [COMMAND]
 
 Commands:
   unpack  Unpack a Artemis pfs archive
@@ -41,7 +41,7 @@ Options:
 ### Unpack
 
 ```plain
-Usage: pfs_rs unpack [OPTIONS] <INPUT> <OUTPUT>
+Usage: pfs-rs unpack [OPTIONS] <INPUT> <OUTPUT>
 
 Arguments:
   <INPUT>   Input pfs file, can be a glob pattern
@@ -55,14 +55,14 @@ Options:
 To unpack a .pfs file:
 
 ```bash
-pfs_rs unpack <path_to_pfs_file> <path_to_extract_dir>
+pfs-rs unpack <path_to_pfs_file> <path_to_extract_dir>
 ```
 
 Example:
 
 ```plain
 └── Artemis
-    ├── pfs_rs
+    ├── pfs-rs
     ├── root.pfs
     ├── root.pfs.000
     ├── root.pfs.001
@@ -75,13 +75,13 @@ Example:
 - To unpack one pfs file
 
   ```bash
-  pfs_rs unpack root.pfs root
+  pfs-rs unpack root.pfs root
   ```
 
 - To unpack all pfs files with glob
 
   ```bash
-  pfs_rs unpack "*.pfs*" .
+  pfs-rs unpack "*.pfs*" .
   ```
 
   Will unpack all .pfs files to `./root/`.
@@ -91,7 +91,7 @@ Example:
 ### Pack
 
 ```plain
-Usage: pfs_rs pack <INPUT> <OUTPUT>
+Usage: pfs-rs pack <INPUT> <OUTPUT>
 
 Arguments:
   <INPUT>   Input directory
@@ -104,7 +104,7 @@ Options:
 To pack files into a .pfs file:
 
 ```bash
-pfs_rs pack <path_to_dir> <path_to_pfs_file>
+pfs-rs pack <path_to_dir> <path_to_pfs_file>
 ```
 
 Example:
@@ -118,13 +118,13 @@ Example:
 │   ├── sound
 │   ├── system
 │   └── system.ini
-├──pfs_rs
+├──pfs-rs
 ```
 
 - To pack whole game folder
 
   ```bash
-  pfs_rs pack Artemis root.pfs
+  pfs-rs pack Artemis root.pfs
   ```
 
 - To pack multiple folders
@@ -138,11 +138,11 @@ Example:
   │   ├── sound
   │   ├── system
   │   ├── system.ini
-  │   └── pfs_rs
+  │   └── pfs-rs
   ```
 
   ```bash
-  pfs_rs font image pc system.ini
+  pfs-rs font image pc system.ini
   ```
 
   Will pack specified dirs and files into root.pfs.
@@ -152,7 +152,7 @@ Example:
 ### List
 
 ```plain
-Usage: pfs_rs list <INPUT>
+Usage: pfs-rs list <INPUT>
 
 Arguments:
   <INPUT>  Input pfs file
@@ -164,17 +164,17 @@ Options:
 To list contents of a .pfs file:
 
 ```bash
-pfs_rs list <path_to_pfs_file>
+pfs-rs list <path_to_pfs_file>
 # or use the short alias:
-pfs_rs ls <path_to_pfs_file>
+pfs-rs ls <path_to_pfs_file>
 ```
 
 Example:
 
 ```bash
-pfs_rs list root.pfs
+pfs-rs list root.pfs
 # or
-pfs_rs ls root.pfs
+pfs-rs ls root.pfs
 ```
 
 This will display a formatted table showing all files in the archive with their sizes and encryption status.

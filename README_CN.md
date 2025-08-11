@@ -18,7 +18,7 @@
 ## 用法
 
 ```plain
-用法：pfs_rs [选项] [命令]
+用法：pfs-rs [选项] [命令]
 
 命令：
   unpack  解包 Artemis pfs 存档
@@ -41,7 +41,7 @@
 ### 解包
 
 ```plain
-用法：pfs_rs unpack [选项] <输入> <输出>
+用法：pfs-rs unpack [选项] <输入> <输出>
 
 参数：
   <输入>   输入 pfs 文件，可以是 glob 模式
@@ -55,14 +55,14 @@
 解包 .pfs 文件：
 
 ```bash
-pfs_rs unpack <pfs文件路径> <解压目录路径>
+pfs-rs unpack <pfs文件路径> <解压目录路径>
 ```
 
 示例：
 
 ```plain
 └── Artemis
-    ├── pfs_rs
+    ├── pfs-rs
     ├── root.pfs
     ├── root.pfs.000
     ├── root.pfs.001
@@ -75,13 +75,13 @@ pfs_rs unpack <pfs文件路径> <解压目录路径>
 - 解包一个 pfs 文件
 
   ```bash
-  pfs_rs unpack root.pfs root
+  pfs-rs unpack root.pfs root
   ```
 
 - 使用 glob 模式解包所有 pfs 文件
 
   ```bash
-  pfs_rs unpack "*.pfs*" .
+  pfs-rs unpack "*.pfs*" .
   ```
 
   会将所有 .pfs 文件解包到 `./root/` 目录。
@@ -91,7 +91,7 @@ pfs_rs unpack <pfs文件路径> <解压目录路径>
 ### 打包
 
 ```plain
-用法：pfs_rs pack <输入> <输出>
+用法：pfs-rs pack <输入> <输出>
 
 参数：
   <输入>   输入目录
@@ -104,7 +104,7 @@ pfs_rs unpack <pfs文件路径> <解压目录路径>
 将文件打包成 .pfs 文件：
 
 ```bash
-pfs_rs pack <目录路径> <pfs文件路径>
+pfs-rs pack <目录路径> <pfs文件路径>
 ```
 
 示例：
@@ -118,13 +118,13 @@ pfs_rs pack <目录路径> <pfs文件路径>
 │   ├── sound
 │   ├── system
 │   └── system.ini
-├──pfs_rs
+├──pfs-rs
 ```
 
 - 打包整个游戏文件夹
 
   ```bash
-  pfs_rs pack Artemis root.pfs
+  pfs-rs pack Artemis root.pfs
   ```
 
 - 打包多个文件夹
@@ -138,11 +138,11 @@ pfs_rs pack <目录路径> <pfs文件路径>
   │   ├── sound
   │   ├── system
   │   ├── system.ini
-  │   └── pfs_rs
+  │   └── pfs-rs
   ```
 
   ```bash
-  pfs_rs font image pc system.ini
+  pfs-rs font image pc system.ini
   ```
 
   会将指定的目录和文件打包到 root.pfs。
@@ -152,7 +152,7 @@ pfs_rs pack <目录路径> <pfs文件路径>
 ### 列表
 
 ```plain
-用法：pfs_rs list <输入>
+用法：pfs-rs list <输入>
 
 参数：
   <输入>  输入 pfs 文件
@@ -164,17 +164,17 @@ pfs_rs pack <目录路径> <pfs文件路径>
 列出 .pfs 文件的内容：
 
 ```bash
-pfs_rs list <pfs文件路径>
+pfs-rs list <pfs文件路径>
 # 或使用缩写别名：
-pfs_rs ls <pfs文件路径>
+pfs-rs ls <pfs文件路径>
 ```
 
 示例：
 
 ```bash
-pfs_rs list root.pfs
+pfs-rs list root.pfs
 # 或
-pfs_rs ls root.pfs
+pfs-rs ls root.pfs
 ```
 
 这将显示一个格式化的表格，显示存档中的所有文件及其大小和加密状态。
