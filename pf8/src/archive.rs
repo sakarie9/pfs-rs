@@ -5,10 +5,9 @@
 //! while PF8 archives support both reading and writing with encryption capabilities.
 
 use crate::builder::Pf8Builder;
-use crate::entry::Pf8Entry;
 use crate::error::Result;
-use crate::format::ArchiveFormat;
 use crate::reader::Pf8Reader;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
 /// High-level interface for working with PF6/PF8 archives
@@ -37,79 +36,52 @@ impl Pf8Archive {
         Pf8Builder::new()
     }
 
-    /// Gets the archive format (PF6 or PF8)
-    pub fn format(&self) -> ArchiveFormat {
-        self.reader.format()
-    }
-
-    /// Returns true if the archive uses encryption (PF8 only)
-    pub fn is_encrypted(&self) -> bool {
-        self.reader.is_encrypted()
-    }
-
-    /// Returns an iterator over all file entries
-    pub fn entries(&self) -> Result<impl Iterator<Item = &Pf8Entry>> {
-        Ok(self.reader.entries())
-    }
-
-    /// Gets the number of files in the archive
-    pub fn len(&self) -> usize {
-        self.reader.len()
-    }
-
-    /// Returns true if the archive is empty
-    pub fn is_empty(&self) -> bool {
-        self.reader.is_empty()
-    }
-
-    /// Gets a file entry by path
-    pub fn get_entry<P: AsRef<Path>>(&self, path: P) -> Result<Option<&Pf8Entry>> {
-        Ok(self.reader.get_entry(path))
-    }
-
-    /// Checks if a file exists in the archive
-    pub fn contains<P: AsRef<Path>>(&self, path: P) -> bool {
-        self.reader.contains(path)
-    }
-
-    /// Reads a file's data by path
-    pub fn read_file<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>> {
-        self.reader.read_file(path)
-    }
-
-    /// Reads a file's data with streaming to minimize memory allocation
-    pub fn read_file_streaming<P: AsRef<Path>, F>(&mut self, path: P, callback: F) -> Result<()>
-    where
-        F: FnMut(&[u8]) -> Result<()>,
-    {
-        self.reader.read_file_streaming(path, callback)
-    }
-
-    /// Extracts all files to the specified directory
-    pub fn extract_all<P: AsRef<Path>>(&mut self, output_dir: P) -> Result<()> {
-        self.reader.extract_all(output_dir)
-    }
-
-    /// Extracts a specific file to the given path
+    /// Extracts a specific file to the given path using streaming I/O
     pub fn extract_file<P: AsRef<Path>, Q: AsRef<Path>>(
         &mut self,
         archive_path: P,
         output_path: Q,
     ) -> Result<()> {
-        let data = self.read_file(archive_path)?;
-
         // Create parent directories if they don't exist
         if let Some(parent) = output_path.as_ref().parent() {
             std::fs::create_dir_all(parent)?;
         }
 
-        std::fs::write(output_path, data)?;
+        // Use streaming extraction to avoid loading entire file into memory
+        use std::fs::File;
+        use std::io::Write;
+
+        let mut output_file = File::create(output_path)?;
+        self.reader.read_file_streaming(archive_path, |chunk| {
+            output_file.write_all(chunk)?;
+            Ok(())
+        })?;
+
         Ok(())
     }
 
     /// Gets the underlying reader (for advanced use cases)
     pub fn reader(&self) -> &Pf8Reader {
         &self.reader
+    }
+
+    /// Gets the underlying reader mutably (for advanced use cases)
+    pub fn reader_mut(&mut self) -> &mut Pf8Reader {
+        &mut self.reader
+    }
+}
+
+impl Deref for Pf8Archive {
+    type Target = Pf8Reader;
+
+    fn deref(&self) -> &Self::Target {
+        &self.reader
+    }
+}
+
+impl DerefMut for Pf8Archive {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.reader
     }
 }
 

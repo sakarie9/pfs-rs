@@ -123,15 +123,12 @@ impl Pf8Reader {
 
     /// Reads a file's data by path
     pub fn read_file<P: AsRef<Path>>(&mut self, path: P) -> Result<Vec<u8>> {
-        // Get entry info and copy values to avoid borrow conflicts
-        let (offset, size, is_encrypted) = {
-            let entry = self
-                .get_entry(path)
-                .ok_or_else(|| Error::FileNotFound("File not found".to_string()))?;
-            (entry.offset(), entry.size(), entry.is_encrypted())
-        };
-
-        self.read_entry_data_by_params(offset, size, is_encrypted)
+        let mut result = Vec::new();
+        self.read_file_streaming(path, |chunk| {
+            result.extend_from_slice(chunk);
+            Ok(())
+        })?;
+        Ok(result)
     }
 
     /// Reads a file's data with streaming to minimize memory allocation
@@ -287,34 +284,5 @@ impl Pf8Reader {
         }
 
         Ok(())
-    }
-
-    /// Reads entry data from file by parameters
-    fn read_entry_data_by_params(
-        &mut self,
-        offset: u32,
-        size: u32,
-        is_encrypted: bool,
-    ) -> Result<Vec<u8>> {
-        let start_offset = offset as u64;
-        let size = size as usize;
-
-        self.file.seek(SeekFrom::Start(start_offset))?;
-        let mut data = vec![0u8; size];
-        self.file.read_exact(&mut data)?;
-
-        if is_encrypted {
-            if let Some(key) = self.encryption_key.as_deref() {
-                for (i, byte) in data.iter_mut().enumerate() {
-                    *byte ^= key[i % key.len()];
-                }
-            } else {
-                return Err(Error::Crypto(
-                    "File is encrypted but no key provided".to_string(),
-                ));
-            }
-        }
-
-        Ok(data)
     }
 }

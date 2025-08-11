@@ -52,7 +52,7 @@ impl FileList {
     }
 
     pub fn from_archive(archive: &Pf8Archive) -> Result<Self> {
-        let entries = archive.entries()?.map(DisplayEntry::from_entry).collect();
+        let entries = archive.entries().map(DisplayEntry::from_entry).collect();
         Ok(Self { entries })
     }
 }

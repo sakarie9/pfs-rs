@@ -1,6 +1,5 @@
 //! Error types for the PF8 library.
 
-use std::fmt;
 use std::io;
 use std::string::FromUtf8Error;
 
@@ -8,43 +7,26 @@ use std::string::FromUtf8Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The error type for PF8 operations.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// I/O error occurred.
+    #[error("I/O error: {0}")]
     Io(io::Error),
     /// Invalid PF8 file format.
+    #[error("Invalid PF8 format: {0}")]
     InvalidFormat(String),
     /// File not found in archive.
+    #[error("File not found in archive: {0}")]
     FileNotFound(String),
     /// Invalid UTF-8 in file names.
+    #[error("Invalid UTF-8 in file name: {0}")]
     InvalidUtf8(FromUtf8Error),
     /// Encryption/decryption error.
+    #[error("Encryption/decryption error: {0}")]
     Crypto(String),
     /// Archive is corrupted.
+    #[error("Archive is corrupted: {0}")]
     Corrupted(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Io(err) => write!(f, "I/O error: {err}"),
-            Error::InvalidFormat(msg) => write!(f, "Invalid PF8 format: {msg}"),
-            Error::FileNotFound(name) => write!(f, "File not found in archive: {name}"),
-            Error::InvalidUtf8(err) => write!(f, "Invalid UTF-8 in file name: {err}"),
-            Error::Crypto(msg) => write!(f, "Encryption/decryption error: {msg}"),
-            Error::Corrupted(msg) => write!(f, "Archive is corrupted: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::Io(err) => Some(err),
-            Error::InvalidUtf8(err) => Some(err),
-            _ => None,
-        }
-    }
 }
 
 impl From<io::Error> for Error {

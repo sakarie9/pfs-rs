@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     let mut archive = Pf8Archive::open(&archive_path)?;
     println!("   Archive contains {} files:", archive.len());
 
-    for entry in archive.entries()? {
+    for entry in archive.entries() {
         println!(
             "   - {}: {} bytes (encrypted: {})",
             entry.path().display(),
@@ -81,7 +81,7 @@ fn main() -> Result<()> {
     let custom_archive =
         Pf8Archive::open_with_patterns(&archive_path2, &[".txt", ".ini", ".md", "readme"])?;
 
-    for entry in custom_archive.entries()? {
+    for entry in custom_archive.entries() {
         println!(
             "   - {}: {} bytes (encrypted: {})",
             entry.path().display(),
@@ -104,7 +104,7 @@ fn main() -> Result<()> {
 
     let structured_archive = Pf8Archive::open(&archive_path3)?;
     println!("   Structured archive contents:");
-    for entry in structured_archive.entries()? {
+    for entry in structured_archive.entries() {
         println!("   - {}", entry.path().display());
     }
 

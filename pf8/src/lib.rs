@@ -25,7 +25,7 @@
 //! let mut archive = Pf8Archive::open(&archive_path)?;
 //!
 //! // List all files in the archive
-//! for entry in archive.entries()? {
+//! for entry in archive.entries() {
 //!     println!("{}: {} bytes", entry.path().display(), entry.size());
 //! }
 //!
@@ -34,7 +34,7 @@
 //! archive.extract_all(&output_dir)?;
 //!
 //! // Extract a specific file
-//! if let Some(_entry) = archive.get_entry("test.txt")? {
+//! if let Some(_entry) = archive.get_entry("test.txt") {
 //!     let data = archive.read_file("test.txt")?;
 //!     let output_file = temp_dir.path().join("extracted_file.txt");
 //!     std::fs::write(output_file, data)?;

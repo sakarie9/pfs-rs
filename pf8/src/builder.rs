@@ -196,7 +196,7 @@ impl Pf8Builder {
     }
 
     /// Writes the archive using the provided writer
-    /// 
+    ///
     /// This method uses streaming I/O to minimize memory usage during the packing process.
     /// Files are read and written in chunks rather than loading entire files into memory.
     pub fn write_to_writer(&self, writer: &mut Pf8Writer) -> Result<()> {
