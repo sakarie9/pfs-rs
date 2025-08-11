@@ -196,6 +196,9 @@ impl Pf8Builder {
     }
 
     /// Writes the archive using the provided writer
+    /// 
+    /// This method uses streaming I/O to minimize memory usage during the packing process.
+    /// Files are read and written in chunks rather than loading entire files into memory.
     pub fn write_to_writer(&self, writer: &mut Pf8Writer) -> Result<()> {
         if self.files.is_empty() {
             return Err(Error::InvalidFormat("No files to archive".to_string()));
@@ -232,10 +235,9 @@ impl Pf8Builder {
         // Write header and entries
         writer.write_header(&entries.iter().map(|(entry, _)| entry).collect::<Vec<_>>())?;
 
-        // Write file data
+        // Write file data using streaming to minimize memory usage
         for (entry, source_path) in entries {
-            let data = fs::read(source_path)?;
-            writer.write_file_data(&entry, &data)?;
+            writer.write_file_data(&entry, &source_path)?;
         }
 
         writer.finalize()?;

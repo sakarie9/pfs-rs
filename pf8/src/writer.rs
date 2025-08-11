@@ -9,13 +9,6 @@ use std::fs::{File, OpenOptions};
 use std::io::{Seek, Write};
 use std::path::Path;
 
-/// Minimal information needed for encryption
-#[derive(Debug, Clone)]
-struct EncryptionInfo {
-    is_encrypted: bool,
-    size: u32,
-}
-
 /// A writer for creating PF8 archives
 pub struct Pf8Writer {
     /// The output file
@@ -24,10 +17,10 @@ pub struct Pf8Writer {
     header_data: Vec<u8>,
     /// Current state of the writer
     state: WriterState,
-    /// Minimal encryption info for each entry
-    encryption_info: Vec<EncryptionInfo>,
     /// Position where file data starts
     data_start_pos: u64,
+    /// Cached encryption key (computed once after header is written)
+    encryption_key: Option<Vec<u8>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -52,8 +45,8 @@ impl Pf8Writer {
             output,
             header_data: Vec::new(),
             state: WriterState::Created,
-            encryption_info: Vec::new(),
             data_start_pos: 0,
+            encryption_key: None,
         })
     }
 
@@ -62,15 +55,6 @@ impl Pf8Writer {
         if self.state != WriterState::Created {
             return Err(Error::InvalidFormat("Header already written".to_string()));
         }
-
-        // Store minimal encryption info for later use during finalization
-        self.encryption_info = entries
-            .iter()
-            .map(|entry| EncryptionInfo {
-                is_encrypted: entry.is_encrypted(),
-                size: entry.size(),
-            })
-            .collect();
 
         // Calculate sizes
         let index_count = entries.len() as u32;
@@ -143,12 +127,21 @@ impl Pf8Writer {
         self.output.write_all(&self.header_data)?;
         self.data_start_pos = self.output.stream_position()?;
 
+        // Generate and cache encryption key once
+        let index_size = format::get_index_size(&self.header_data)?;
+        self.encryption_key = Some(crypto::generate_key(&self.header_data, index_size));
+
         self.state = WriterState::HeaderWritten;
         Ok(())
     }
 
     /// Writes data for a file entry
-    pub fn write_file_data(&mut self, entry: &Pf8Entry, data: &[u8]) -> Result<()> {
+    /// This method writes the file data directly to the output without buffering.
+    /// It is suitable for small files or when low latency is required.
+    /// But for larger files, it will cause very high memory usage as much of the file
+    /// will be held in memory at once.
+    /// Use write_file_data instead of this.
+    pub fn write_file_data_direct(&mut self, entry: &Pf8Entry, data: &[u8]) -> Result<()> {
         if self.state == WriterState::Created {
             return Err(Error::InvalidFormat(
                 "Header must be written first".to_string(),
@@ -174,7 +167,91 @@ impl Pf8Writer {
         Ok(())
     }
 
-    /// Finalizes the archive by applying encryption
+    /// Writes file data from a reader using streaming to minimize memory usage
+    ///
+    /// This method reads the source file in chunks (default 4MB) and writes them directly
+    /// to the output, avoiding loading the entire file into memory. This is especially
+    /// beneficial for large files that would otherwise cause high memory usage.
+    ///
+    /// If encryption is needed, it will be applied on-the-fly during the streaming process.
+    pub fn write_file_data<P: AsRef<std::path::Path>>(
+        &mut self,
+        entry: &Pf8Entry,
+        source_path: P,
+    ) -> Result<()> {
+        if self.state == WriterState::Created {
+            return Err(Error::InvalidFormat(
+                "Header must be written first".to_string(),
+            ));
+        }
+
+        if self.state == WriterState::Finalized {
+            return Err(Error::InvalidFormat("Writer is finalized".to_string()));
+        }
+
+        use std::io::Read;
+        let mut source_file = std::fs::File::open(source_path)?;
+        let expected_size = entry.size() as u64;
+        let use_encryption = entry.is_encrypted();
+        let mut total_written = 0u64;
+
+        // For small files, read entirely to minimize overhead
+        if expected_size <= BUFFER_SIZE as u64 {
+            let mut data = vec![0u8; expected_size as usize];
+            source_file.read_exact(&mut data)?;
+
+            // Apply encryption if needed
+            if use_encryption
+                && self.encryption_key.is_some()
+                && let Some(ref key) = self.encryption_key
+            {
+                crypto::encrypt(&mut data, key, 0);
+            }
+
+            // Write all at once
+            self.output.write_all(&data)?;
+            total_written = expected_size;
+        } else {
+            // For large files, use streaming with optimized buffer reuse
+            let mut buffer = vec![0u8; BUFFER_SIZE];
+
+            while total_written < expected_size {
+                let remaining = expected_size - total_written;
+                let chunk_size = std::cmp::min(BUFFER_SIZE as u64, remaining) as usize;
+
+                // Read chunk from source file
+                source_file.read_exact(&mut buffer[..chunk_size])?;
+
+                // Apply encryption if needed, using cached key
+                if use_encryption
+                    && self.encryption_key.is_some()
+                    && let Some(ref key) = self.encryption_key
+                {
+                    crypto::encrypt(&mut buffer[..chunk_size], key, total_written as usize);
+                }
+
+                // Write chunk to output (already encrypted if needed)
+                self.output.write_all(&buffer[..chunk_size])?;
+
+                total_written += chunk_size as u64;
+            }
+        }
+
+        if total_written != expected_size {
+            return Err(Error::InvalidFormat(format!(
+                "Data size mismatch: expected {}, wrote {}",
+                expected_size, total_written
+            )));
+        }
+
+        self.state = WriterState::WritingData;
+        Ok(())
+    }
+
+    /// Finalizes the archive
+    ///
+    /// Since encryption is now handled during the streaming write process,
+    /// this method mainly ensures the writer is in a finalized state.
     pub fn finalize(&mut self) -> Result<()> {
         if self.state == WriterState::Finalized {
             return Ok(());
@@ -184,52 +261,7 @@ impl Pf8Writer {
             return Err(Error::InvalidFormat("No data written".to_string()));
         }
 
-        // For in-place encryption, we need to read back the file data
-        // This is still more memory efficient than keeping everything in memory
-
-        // Generate encryption key from header
-        let index_size = format::get_index_size(&self.header_data)?;
-        let encryption_key = crypto::generate_key(&self.header_data, index_size);
-
-        // Get current file position (end of file)
-        let file_end = self.output.stream_position()?;
-
-        // Process each file that needs encryption
-        let mut data_offset = self.data_start_pos;
-
-        for enc_info in &self.encryption_info {
-            if enc_info.is_encrypted {
-                // Read, encrypt, and write back in chunks
-                let file_size = enc_info.size as u64;
-                let mut processed = 0u64;
-
-                while processed < file_size {
-                    let chunk_len = std::cmp::min(BUFFER_SIZE, (file_size - processed) as usize);
-
-                    // Read chunk
-                    self.output
-                        .seek(std::io::SeekFrom::Start(data_offset + processed))?;
-                    let mut buffer = vec![0u8; chunk_len];
-                    use std::io::Read;
-                    self.output.read_exact(&mut buffer)?;
-
-                    // Encrypt chunk with correct offset within this file
-                    crypto::encrypt(&mut buffer, &encryption_key, processed as usize);
-
-                    // Write back encrypted chunk
-                    self.output
-                        .seek(std::io::SeekFrom::Start(data_offset + processed))?;
-                    self.output.write_all(&buffer)?;
-
-                    processed += chunk_len as u64;
-                }
-            }
-
-            data_offset += enc_info.size as u64;
-        }
-
-        // Restore file position to end
-        self.output.seek(std::io::SeekFrom::Start(file_end))?;
+        // Ensure all data is written to disk
         self.output.flush()?;
 
         self.state = WriterState::Finalized;
