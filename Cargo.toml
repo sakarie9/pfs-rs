@@ -9,6 +9,7 @@ strip = true
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+strip = false
 
 [workspace.dependencies]
 anyhow = "1.0"
