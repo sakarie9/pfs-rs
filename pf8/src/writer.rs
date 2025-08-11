@@ -213,8 +213,8 @@ impl Pf8Writer {
                     use std::io::Read;
                     self.output.read_exact(&mut buffer)?;
 
-                    // Encrypt chunk
-                    crypto::encrypt(&mut buffer, &encryption_key);
+                    // Encrypt chunk with correct offset within this file
+                    crypto::encrypt(&mut buffer, &encryption_key, processed as usize);
 
                     // Write back encrypted chunk
                     self.output

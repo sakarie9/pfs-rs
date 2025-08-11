@@ -22,10 +22,10 @@ pub fn generate_key(data: &[u8], index_size: u32) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-/// Encrypts data using XOR with the provided key
-pub fn encrypt(data: &mut [u8], key: &[u8]) {
+/// Encrypts data using XOR with the provided key, starting from a specific offset
+pub fn encrypt(data: &mut [u8], key: &[u8], offset: usize) {
     for (i, byte) in data.iter_mut().enumerate() {
-        *byte ^= key[i % key.len()];
+        *byte ^= key[(offset + i) % key.len()];
     }
 }
 
