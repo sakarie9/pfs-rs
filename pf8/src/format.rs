@@ -36,6 +36,7 @@ pub mod offsets {
     pub const INDEX_COUNT: usize = 0x07;
     pub const ENTRIES_START: usize = 0x0B;
     pub const INDEX_DATA_START: usize = 0x07;
+    pub const FILESIZE_OFFSETS_START: usize = 0x0F;
 }
 
 /// Raw file entry as stored in PF8 format

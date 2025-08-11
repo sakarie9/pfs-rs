@@ -98,19 +98,26 @@ impl Pf8Writer {
             let name_bytes = entry.pf8_path().as_bytes();
             let name_length = name_bytes.len() as u32;
 
+            // name_length
             self.header_data
                 .extend_from_slice(&name_length.to_le_bytes());
+            // name
             self.header_data.extend_from_slice(name_bytes);
+            // reserved
             self.header_data
                 .extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // padding
+            // offset
             self.header_data
                 .extend_from_slice(&file_offset.to_le_bytes());
+            // size
             self.header_data
                 .extend_from_slice(&entry.size().to_le_bytes());
 
             // Track the offset of the size field for later use
-            filesize_offsets
-                .push((self.header_data.len() - 4 - format::offsets::ENTRIES_START) as u64);
+            // offset from faddr 0xf
+            filesize_offsets.push(
+                (self.header_data.len() - 4 - format::offsets::FILESIZE_OFFSETS_START) as u64,
+            );
             file_offset += entry.size();
         }
 
