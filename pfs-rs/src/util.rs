@@ -161,10 +161,10 @@ pub fn get_final_output_path(suggested_output: PathBuf, overwrite: bool) -> Resu
         Ok(suggested_output)
     } else {
         // 如果是.pfs文件，尝试找到不存在的文件名
-        if let Some(parent) = suggested_output.parent() {
-            if let Some(stem) = suggested_output.file_stem().and_then(|s| s.to_str()) {
-                return try_get_next_nonexist_pfs(parent, stem);
-            }
+        if let Some(parent) = suggested_output.parent()
+            && let Some(stem) = suggested_output.file_stem().and_then(|s| s.to_str())
+        {
+            return try_get_next_nonexist_pfs(parent, stem);
         }
         Ok(suggested_output)
     }
