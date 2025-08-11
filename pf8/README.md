@@ -57,10 +57,10 @@ use pf8::{Pf8Archive, Result};
 
 fn main() -> Result<()> {
     // Open an existing PF8 archive
-    let archive = Pf8Archive::open("root.pfs")?;
+    let mut archive = Pf8Archive::open("root.pfs")?;
 
     // List all files in the archive
-    for entry in archive.entries()? {
+    for entry in archive.entries() {
         println!("{}: {} bytes", entry.path().display(), entry.size());
     }
 
@@ -68,8 +68,8 @@ fn main() -> Result<()> {
     archive.extract_all("output_dir")?;
 
     // Extract a specific file
-    if let Some(entry) = archive.get_entry("system/table/list_windows.tbl")? {
-        let data = entry.read(archive.reader().data(), Some(archive.reader().encryption_key()))?;
+    if let Some(_entry) = archive.get_entry("system/table/list_windows.tbl") {
+        let data = archive.read_file("system/table/list_windows.tbl")?;
         std::fs::write("extracted_list_windows.tbl", data)?;
     }
 
@@ -137,14 +137,15 @@ Total: 3 files, Total size: 45.6 MB
 use pf8::{Pf8Reader, Result};
 
 fn main() -> Result<()> {
-    let reader = Pf8Reader::open("root.pfs")?;
+    let mut reader = Pf8Reader::open("root.pfs")?;
     
     for entry in reader.entries() {
         println!("File: {}", entry.path().display());
         println!("Size: {} bytes", entry.size());
+        println!("Encrypted: {}", entry.is_encrypted());
         
         // Read file data
-        let data = entry.read(reader.data(), Some(reader.encryption_key()))?;
+        let data = reader.read_file(entry.path())?;
         
         // Process data...
     }
@@ -181,7 +182,7 @@ For large archives, you can use streaming operations to avoid loading everything
 use pf8::{Pf8Reader, Result};
 
 fn extract_large_archive(archive_path: &str, output_dir: &str) -> Result<()> {
-    let reader = Pf8Reader::open(archive_path)?;
+    let mut reader = Pf8Reader::open(archive_path)?;
     
     for entry in reader.entries() {
         let output_path = std::path::Path::new(output_dir).join(entry.path());
@@ -192,8 +193,14 @@ fn extract_large_archive(archive_path: &str, output_dir: &str) -> Result<()> {
         }
         
         // Stream file data directly to disk
-        let data = entry.read(reader.data(), Some(reader.encryption_key()))?;
-        std::fs::write(output_path, data)?;
+        use std::fs::File;
+        use std::io::Write;
+        
+        let mut output_file = File::create(&output_path)?;
+        reader.read_file_streaming(entry.path(), |chunk| {
+            output_file.write_all(chunk)?;
+            Ok(())
+        })?;
     }
     
     Ok(())
