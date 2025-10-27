@@ -23,7 +23,7 @@ impl SimpleProgressCallback {
 impl ProgressCallback for SimpleProgressCallback {
     fn on_progress(&mut self, progress: &ProgressInfo) -> Result<()> {
         let percentage = progress.overall_progress();
-        
+
         // Only print when progress changes by at least 1%
         if (percentage - self.last_percentage).abs() >= 1.0 {
             print!(
@@ -37,7 +37,7 @@ impl ProgressCallback for SimpleProgressCallback {
             std::io::stdout().flush().unwrap();
             self.last_percentage = percentage;
         }
-        
+
         Ok(())
     }
 
@@ -102,7 +102,7 @@ fn main() -> Result<()> {
     let archive_path = temp_dir.path().join("test.pf8");
     let input_dir = temp_dir.path().join("input");
     let output_dir = temp_dir.path().join("output");
-    
+
     // Create some test files
     std::fs::create_dir_all(&input_dir).unwrap();
     for i in 0..10 {
@@ -110,31 +110,31 @@ fn main() -> Result<()> {
         let content = format!("Test content for file {}\n", i).repeat(1000);
         std::fs::write(file_path, content).unwrap();
     }
-    
+
     // Create the archive
     println!("Creating test archive...");
     pf8::create_from_dir(&input_dir, &archive_path)?;
-    
+
     // Example 1: Extract with simple progress reporting
     println!("\n=== Example 1: Extract with progress reporting ===");
     let mut archive = Pf8Archive::open(&archive_path)?;
     let mut callback = SimpleProgressCallback::new();
     archive.extract_all_with_progress(&output_dir, &mut callback)?;
     println!("\n✓ Extraction completed successfully!");
-    
+
     // Clean up output directory for next example
     std::fs::remove_dir_all(&output_dir).unwrap();
-    
+
     // Example 2: Extract with cancellation support
     println!("\n=== Example 2: Extract with cancellation (simulated) ===");
     let mut archive = Pf8Archive::open(&archive_path)?;
     let token = CancellationToken::new();
     let token_clone = token.clone();
-    
+
     // Simulate cancellation after a short delay (in real use, this would be triggered by user input)
     let cancel_flag = Arc::new(AtomicBool::new(false));
     let cancel_flag_clone = cancel_flag.clone();
-    
+
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(100));
         if !cancel_flag_clone.load(Ordering::SeqCst) {
@@ -142,7 +142,7 @@ fn main() -> Result<()> {
             println!("\n⚠ Cancellation triggered!");
         }
     });
-    
+
     let mut callback = CancellableProgressCallback::new(token);
     match archive.extract_all_with_progress(&output_dir, &mut callback) {
         Ok(_) => {
@@ -157,7 +157,7 @@ fn main() -> Result<()> {
             return Err(e);
         }
     }
-    
+
     println!("\n=== All examples completed ===");
     Ok(())
 }

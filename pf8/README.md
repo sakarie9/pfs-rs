@@ -276,8 +276,6 @@ fn main() -> Result<()> {
 }
 ```
 
-See [Progress Callback Documentation](docs/PROGRESS_CALLBACK.md) for detailed usage and [JNI Integration Guide](docs/JNI_INTEGRATION.md) for Java/Android integration.
-
 ## Error Handling
 
 The library provides comprehensive error types:
