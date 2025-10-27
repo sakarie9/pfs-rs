@@ -87,6 +87,7 @@
 
 pub mod archive;
 pub mod builder;
+pub mod callbacks;
 pub mod entry;
 pub mod error;
 pub mod reader;
@@ -100,6 +101,9 @@ mod utils;
 // Re-export main types for convenience
 pub use archive::Pf8Archive;
 pub use builder::Pf8Builder;
+pub use callbacks::{
+    CancellableCallback, CancellationToken, NoOpCallback, ProgressCallback, ProgressInfo,
+};
 pub use entry::Pf8Entry;
 pub use error::{Error, Result};
 pub use format::ArchiveFormat;

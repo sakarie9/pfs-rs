@@ -5,6 +5,7 @@
 //! while PF8 archives support both reading and writing with encryption capabilities.
 
 use crate::builder::Pf8Builder;
+use crate::callbacks::ProgressCallback;
 use crate::error::Result;
 use crate::reader::Pf8Reader;
 use std::ops::{Deref, DerefMut};
@@ -60,6 +61,17 @@ impl Pf8Archive {
         Ok(())
     }
 
+    /// Extracts a specific file with progress reporting
+    pub fn extract_file_with_progress<P: AsRef<Path>, Q: AsRef<Path>, C: ProgressCallback>(
+        &mut self,
+        archive_path: P,
+        output_path: Q,
+        callback: &mut C,
+    ) -> Result<()> {
+        self.reader
+            .extract_file_with_progress(archive_path, output_path, callback)
+    }
+
     /// Gets the underlying reader (for advanced use cases)
     pub fn reader(&self) -> &Pf8Reader {
         &self.reader
@@ -101,6 +113,16 @@ pub fn extract_with_patterns<P: AsRef<Path>, Q: AsRef<Path>>(
 ) -> Result<()> {
     let mut archive = Pf8Archive::open_with_patterns(archive_path, unencrypted_patterns)?;
     archive.extract_all(output_dir)
+}
+
+/// Extracts a PF8 archive to the specified directory with progress reporting
+pub fn extract_with_progress<P: AsRef<Path>, Q: AsRef<Path>, C: ProgressCallback>(
+    archive_path: P,
+    output_dir: Q,
+    callback: &mut C,
+) -> Result<()> {
+    let mut archive = Pf8Archive::open(archive_path)?;
+    archive.extract_all_with_progress(output_dir, callback)
 }
 
 /// Creates a PF8 archive from a directory

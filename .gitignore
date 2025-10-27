@@ -22,3 +22,4 @@ target/
 dist/
 target
 .tests/
+pfs-tests/

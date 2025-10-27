@@ -1,5 +1,6 @@
 //! High-level reader for PF6/PF8 archives.
 
+use crate::callbacks::{NoOpCallback, ProgressCallback, ProgressInfo};
 use crate::constants::{BUFFER_SIZE, UNENCRYPTED_FILTER};
 use crate::crypto;
 use crate::entry::Pf8Entry;
@@ -200,30 +201,110 @@ impl Pf8Reader {
 
     /// Extracts all files to the specified directory with memory optimization
     pub fn extract_all<P: AsRef<Path>>(&mut self, output_dir: P) -> Result<()> {
+        let mut callback = NoOpCallback;
+        self.extract_all_with_progress(output_dir, &mut callback)
+    }
+
+    /// Extracts all files with progress reporting and cancellation support
+    pub fn extract_all_with_progress<P: AsRef<Path>, C: ProgressCallback>(
+        &mut self,
+        output_dir: P,
+        callback: &mut C,
+    ) -> Result<()> {
         let output_dir = output_dir.as_ref();
         let mut buffer = vec![0u8; BUFFER_SIZE];
 
-        for entry in &self.entries.clone() {
+        // Calculate total bytes
+        let total_bytes: u64 = self.entries.iter().map(|e| e.size() as u64).sum();
+        let total_files = self.entries.len();
+        let mut total_bytes_processed = 0u64;
+
+        for (index, entry) in self.entries.clone().iter().enumerate() {
             let file_path = output_dir.join(entry.path());
+
+            // Notify file start
+            callback.on_file_start(entry.path(), index, total_files)?;
 
             // Create parent directories if they don't exist
             if let Some(parent) = file_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
 
-            self.extract_entry_streaming(entry, &file_path, &mut buffer)?;
+            // Extract with progress
+            let bytes_written = self.extract_entry_with_progress(
+                entry,
+                &file_path,
+                &mut buffer,
+                index,
+                total_files,
+                total_bytes_processed,
+                total_bytes,
+                callback,
+            )?;
+
+            total_bytes_processed += bytes_written;
+
+            // Notify file complete
+            callback.on_file_complete(entry.path(), index)?;
         }
 
         Ok(())
     }
 
-    /// Extracts a single entry using streaming to minimize memory usage
-    fn extract_entry_streaming<P: AsRef<Path>>(
+    /// Extracts a single file with progress reporting
+    pub fn extract_file_with_progress<P: AsRef<Path>, Q: AsRef<Path>, C: ProgressCallback>(
+        &mut self,
+        archive_path: P,
+        output_path: Q,
+        callback: &mut C,
+    ) -> Result<()> {
+        // Create parent directories if they don't exist
+        if let Some(parent) = output_path.as_ref().parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Get entry info
+        let entry = self
+            .get_entry(&archive_path)
+            .ok_or_else(|| Error::FileNotFound("File not found".to_string()))?
+            .clone();
+
+        let mut buffer = vec![0u8; BUFFER_SIZE];
+
+        // Notify file start
+        callback.on_file_start(entry.path(), 0, 1)?;
+
+        // Extract with progress
+        self.extract_entry_with_progress(
+            &entry,
+            output_path,
+            &mut buffer,
+            0,
+            1,
+            0,
+            entry.size() as u64,
+            callback,
+        )?;
+
+        // Notify file complete
+        callback.on_file_complete(entry.path(), 0)?;
+
+        Ok(())
+    }
+
+    /// Extracts a single entry using streaming with progress reporting
+    #[allow(clippy::too_many_arguments)]
+    fn extract_entry_with_progress<P: AsRef<Path>, C: ProgressCallback>(
         &mut self,
         entry: &Pf8Entry,
         output_path: P,
         buffer: &mut [u8],
-    ) -> Result<()> {
+        current_file_index: usize,
+        total_files: usize,
+        total_bytes_processed: u64,
+        total_bytes: u64,
+        callback: &mut C,
+    ) -> Result<u64> {
         use std::io::Write;
 
         let mut output_file = File::create(output_path)?;
@@ -238,6 +319,8 @@ impl Pf8Reader {
         };
 
         self.file.seek(SeekFrom::Start(start_offset))?;
+
+        let mut current_file_bytes = 0u64;
 
         if file_size <= buffer.len() {
             // Small file: read directly into buffer
@@ -257,6 +340,19 @@ impl Pf8Reader {
             }
 
             output_file.write_all(&temp_buffer)?;
+            current_file_bytes = file_size as u64;
+
+            // Report progress
+            let progress = ProgressInfo {
+                current_file: entry.path().to_string_lossy().to_string(),
+                current_file_index,
+                total_files,
+                current_file_bytes,
+                current_file_total: file_size as u64,
+                total_bytes_processed: total_bytes_processed + current_file_bytes,
+                total_bytes,
+            };
+            callback.on_progress(&progress)?;
         } else {
             // Large file: stream in chunks
             let buffer_size = buffer.len();
@@ -280,9 +376,22 @@ impl Pf8Reader {
 
                 output_file.write_all(&buffer[..chunk_size])?;
                 bytes_written += chunk_size;
+                current_file_bytes += chunk_size as u64;
+
+                // Report progress
+                let progress = ProgressInfo {
+                    current_file: entry.path().to_string_lossy().to_string(),
+                    current_file_index,
+                    total_files,
+                    current_file_bytes,
+                    current_file_total: file_size as u64,
+                    total_bytes_processed: total_bytes_processed + current_file_bytes,
+                    total_bytes,
+                };
+                callback.on_progress(&progress)?;
             }
         }
 
-        Ok(())
+        Ok(current_file_bytes)
     }
 }

@@ -27,6 +27,9 @@ pub enum Error {
     /// Archive is corrupted.
     #[error("Archive is corrupted: {0}")]
     Corrupted(String),
+    /// Operation was cancelled.
+    #[error("Operation was cancelled")]
+    Cancelled,
 }
 
 impl From<io::Error> for Error {

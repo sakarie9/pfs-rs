@@ -15,6 +15,8 @@ A comprehensive Rust library for encoding and decoding PF6 and PF8 archive files
   - **PF8**: Full read/write support with XOR encryption
 - **Streaming Support**: Read and write archives without loading everything into memory
 - **Built-in Encryption**: XOR encryption with SHA1-based keys (PF8 only)
+- **Progress Callbacks**: Real-time progress reporting during extraction
+- **Cancellation Support**: Cancel long-running operations at any time
 - **Flexible API**: Both high-level convenience methods and low-level control
 - **Path Handling**: Automatic conversion between system paths and archive internal format
 - **Comprehensive Error Handling**: Detailed error types with helpful messages
@@ -207,6 +209,75 @@ fn extract_large_archive(archive_path: &str, output_dir: &str) -> Result<()> {
 }
 ```
 
+### Progress Callbacks and Cancellation
+
+For better user experience, especially in GUI applications or JNI scenarios, you can track extraction progress and cancel operations:
+
+```rust
+use pf8::{Pf8Archive, ProgressCallback, ProgressInfo, CancellationToken, Result};
+use std::path::Path;
+
+// Implement a progress callback
+struct MyCallback;
+
+impl ProgressCallback for MyCallback {
+    fn on_progress(&mut self, progress: &ProgressInfo) -> Result<()> {
+        println!(
+            "Progress: {:.1}% - Processing: {} ({}/{})",
+            progress.overall_progress(),
+            progress.current_file,
+            progress.current_file_index + 1,
+            progress.total_files
+        );
+        Ok(())
+    }
+    
+    fn on_file_start(&mut self, path: &Path, index: usize, total: usize) -> Result<()> {
+        println!("[{}/{}] Starting: {}", index + 1, total, path.display());
+        Ok(())
+    }
+}
+
+fn main() -> Result<()> {
+
+    let mut callback = MyCallback;
+    
+    // Extract with progress reporting
+    extract_with_progress("root.pfs", "output_directory", &mut callback)?;
+    
+    Ok(())
+}
+```
+
+For cancellable operations:
+
+```rust
+use pf8::{CancellationToken, CancellableCallback};
+
+fn main() -> Result<()> {
+    let token = CancellationToken::new();
+    let token_clone = token.clone();
+    
+    // In another thread, you can call token_clone.cancel()
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        token_clone.cancel();
+    });
+    
+    let mut callback = CancellableCallback::new(MyCallback, token);
+    
+    match extract_all_with_progress("archive.pf8", "output/", &mut callback) {
+        Ok(_) => println!("Completed"),
+        Err(pf8::Error::Cancelled) => println!("Cancelled by user"),
+        Err(e) => eprintln!("Error: {}", e),
+    }
+    
+    Ok(())
+}
+```
+
+See [Progress Callback Documentation](docs/PROGRESS_CALLBACK.md) for detailed usage and [JNI Integration Guide](docs/JNI_INTEGRATION.md) for Java/Android integration.
+
 ## Error Handling
 
 The library provides comprehensive error types:
@@ -221,6 +292,7 @@ fn handle_errors() -> Result<()> {
         Err(Error::InvalidFormat(msg)) => eprintln!("Invalid format: {}", msg),
         Err(Error::FileNotFound(name)) => eprintln!("File not found: {}", name),
         Err(Error::Corrupted(msg)) => eprintln!("Archive corrupted: {}", msg),
+        Err(Error::Cancelled) => eprintln!("Operation was cancelled"),
         Err(e) => eprintln!("Other error: {}", e),
     }
     
