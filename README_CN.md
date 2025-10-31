@@ -179,6 +179,10 @@ pfs-rs ls root.pfs
 
 这将显示一个格式化的表格，显示存档中的所有文件及其大小和加密状态。
 
+## 相关项目
+
+[pfs-android](https://github.com/sakarie9/pfs-android)
+
 ## 致谢
 
 - [YuriSizuku/GalgameReverse](https://github.com/YuriSizuku/GalgameReverse/blob/master/project/artemis/src/artemis_pf8.py)

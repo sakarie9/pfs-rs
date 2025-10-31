@@ -179,6 +179,10 @@ pfs-rs ls root.pfs
 
 This will display a formatted table showing all files in the archive with their sizes and encryption status.
 
+## Related Projects
+
+[pfs-android](https://github.com/sakarie9/pfs-android)
+
 ## Acknowledgements
 
 - [YuriSizuku/GalgameReverse](https://github.com/YuriSizuku/GalgameReverse/blob/master/project/artemis/src/artemis_pf8.py)
