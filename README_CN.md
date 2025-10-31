@@ -181,7 +181,7 @@ pfs-rs ls root.pfs
 
 ## 相关项目
 
-[pfs-android](https://github.com/sakarie9/pfs-android)
+- [pfs-android](https://github.com/sakarie9/pfs-android): 一个用于解包 Artemis pfs 文件的 Android 应用，基于 pf8。
 
 ## 致谢
 

@@ -181,7 +181,7 @@ This will display a formatted table showing all files in the archive with their 
 
 ## Related Projects
 
-[pfs-android](https://github.com/sakarie9/pfs-android)
+- [pfs-android](https://github.com/sakarie9/pfs-android): An Android app for unpacking Artemis pfs files, based on pf8.
 
 ## Acknowledgements
 
