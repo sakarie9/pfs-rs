@@ -6,7 +6,7 @@ Artemis pfs file unpacker and packer written in Rust.
 
 ## Description
 
-> Artemis is a game engine. It uses pfs files to store game assets.
+> [Artemis](https://www.ies-net.com/) is a game engine. It uses pfs files to store game assets.
 
 This project provides tools to unpack and pack pfs files used by the Artemis system. It is written entirely in Rust.
 
