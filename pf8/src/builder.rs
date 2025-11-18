@@ -195,6 +195,13 @@ impl Pf8Builder {
         self.write_to_writer(&mut writer)
     }
 
+    /// Returns sorted file indices
+    fn sorted_indices(&self) -> Vec<usize> {
+        let mut indices: Vec<_> = (0..self.files.len()).collect();
+        indices.sort_by(|&a, &b| self.files[a].1.cmp(&self.files[b].1));
+        indices
+    }
+
     /// Writes the archive using the provided writer
     ///
     /// This method uses streaming I/O to minimize memory usage during the packing process.
@@ -208,7 +215,11 @@ impl Pf8Builder {
         let mut entries = Vec::new();
         let mut total_data_size = 0u32;
 
-        for (source_path, archive_path) in &self.files {
+        // Sort files by archive path index
+        let indices = self.sorted_indices();
+
+        for &i in &indices {
+            let (source_path, archive_path) = &self.files[i];
             let metadata = fs::metadata(source_path)?;
             let size = metadata.len();
 
