@@ -1,5 +1,6 @@
 //! Builder for creating PF8 archives.
 
+use crate::constants::UNENCRYPTED_FILTER;
 use crate::entry::Pf8Entry;
 use crate::error::{Error, Result};
 use crate::writer::Pf8Writer;
@@ -22,7 +23,7 @@ impl Pf8Builder {
     pub fn new() -> Self {
         Self {
             files: Vec::new(),
-            unencrypted_patterns: Vec::new(),
+            unencrypted_patterns: UNENCRYPTED_FILTER.iter().map(|&s| s.to_string()).collect(),
             base_path: None,
         }
     }
