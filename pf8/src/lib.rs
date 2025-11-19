@@ -102,8 +102,7 @@ mod utils;
 pub use archive::Pf8Archive;
 pub use builder::Pf8Builder;
 pub use callbacks::{
-    ArchiveError, ArchiveEvent, ArchiveHandler, ControlAction, NoOpHandler, OperationType,
-    ProgressInfo,
+    ArchiveError, ArchiveEvent, ArchiveHandler, ControlAction, OperationType, ProgressInfo,
 };
 pub use entry::Pf8Entry;
 pub use error::{Error, Result};

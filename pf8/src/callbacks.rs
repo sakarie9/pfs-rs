@@ -2,6 +2,36 @@
 //!
 //! This module provides a unified event-driven callback interface that supports
 //! both packing and unpacking operations with comprehensive lifecycle events.
+//!
+//! # Performance Optimization
+//!
+//! The [`ArchiveHandler`] trait provides **default implementations** for all event methods.
+//! This means you only need to override the events you care about, avoiding unnecessary
+//! overhead for unhandled events.
+//!
+//! ## Zero-Cost Abstraction
+//!
+//! When you only override specific methods (e.g., `on_progress`), the Rust compiler
+//! can optimize away the overhead of events you don't handle. The default implementations
+//! are inline and trivial, so they compile to essentially zero overhead.
+//!
+//! ### Example: Progress-only handler
+//!
+//! ```rust,ignore
+//! struct MyHandler;
+//!
+//! impl ArchiveHandler for MyHandler {
+//!     // Only override what you need
+//!     fn on_progress(&mut self, info: &ProgressInfo) -> ControlAction {
+//!         println!("Progress: {:.1}%", info.overall_progress().unwrap_or(0.0));
+//!         ControlAction::Continue
+//!     }
+//!     // All other events (on_started, on_entry_started, etc.) use default no-op implementation
+//! }
+//! ```
+//!
+//! In this example, only progress events incur any overhead. Events like `on_entry_started`
+//! and `on_entry_finished` still fire, but they immediately return `Continue` with minimal cost.
 
 use std::fmt;
 
@@ -156,44 +186,138 @@ impl fmt::Display for ArchiveEvent {
 /// This unified interface supports both packing and unpacking operations
 /// through a single event-driven callback mechanism.
 ///
-/// # Example
+/// **Performance Note**: All methods have default implementations that return
+/// `ControlAction::Continue`. You only need to override the events you care about,
+/// avoiding unnecessary overhead for unhandled events.
+///
+/// # Example: Handling only progress events
 ///
 /// ```rust,ignore
-/// struct MyHandler;
+/// struct ProgressOnlyHandler;
 ///
-/// impl ArchiveHandler for MyHandler {
-///     fn on_event(&mut self, event: &ArchiveEvent) -> ControlAction {
-///         match event {
-///             ArchiveEvent::Started(op) => {
-///                 println!("Operation started: {}", op);
-///                 ControlAction::Continue
-///             }
-///             ArchiveEvent::Progress(info) => {
-///                 println!("Processing: {}", info.current_file);
-///                 // Abort if some condition is met
-///                 if should_cancel() {
-///                     return ControlAction::Abort;
-///                 }
-///                 ControlAction::Continue
-///             }
-///             ArchiveEvent::Finished => {
-///                 println!("Operation completed");
-///                 ControlAction::Continue
-///             }
-///             _ => ControlAction::Continue,
+/// impl ArchiveHandler for ProgressOnlyHandler {
+///     fn on_progress(&mut self, info: &ProgressInfo) -> ControlAction {
+///         println!("Progress: {:.1}%", info.overall_progress().unwrap_or(0.0));
+///         ControlAction::Continue
+///     }
+///     // All other events use default implementation (no-op)
+/// }
+/// ```
+///
+/// # Example: Handling multiple events
+///
+/// ```rust,ignore
+/// struct CustomHandler {
+///     cancel_flag: bool,
+/// }
+///
+/// impl ArchiveHandler for CustomHandler {
+///     fn on_started(&mut self, op: OperationType) -> ControlAction {
+///         println!("Started: {}", op);
+///         ControlAction::Continue
+///     }
+///
+///     fn on_progress(&mut self, info: &ProgressInfo) -> ControlAction {
+///         if self.cancel_flag {
+///             return ControlAction::Abort;
 ///         }
+///         println!("Processing: {}", info.current_file);
+///         ControlAction::Continue
+///     }
+///
+///     fn on_finished(&mut self) -> ControlAction {
+///         println!("Completed!");
+///         ControlAction::Continue
 ///     }
 /// }
 /// ```
 pub trait ArchiveHandler: Send {
-    /// Called when an archive event occurs
+    /// Called when the archive operation starts
     ///
     /// # Arguments
-    /// * `event` - The event that occurred
+    /// * `op_type` - The type of operation (Pack or Unpack)
     ///
     /// # Returns
     /// `ControlAction::Continue` to proceed, or `ControlAction::Abort` to cancel
-    fn on_event(&mut self, event: &ArchiveEvent) -> ControlAction;
+    #[allow(unused_variables)]
+    fn on_started(&mut self, op_type: OperationType) -> ControlAction {
+        ControlAction::Continue
+    }
+
+    /// Called when starting to process a specific file/entry
+    ///
+    /// # Arguments
+    /// * `name` - The name or path of the entry being processed
+    ///
+    /// # Returns
+    /// `ControlAction::Continue` to proceed, or `ControlAction::Abort` to cancel
+    #[allow(unused_variables)]
+    fn on_entry_started(&mut self, name: &str) -> ControlAction {
+        ControlAction::Continue
+    }
+
+    /// Called periodically to report progress
+    ///
+    /// This is where most of the performance-critical updates happen.
+    /// Only override this if you need progress updates.
+    ///
+    /// # Arguments
+    /// * `info` - Current progress information
+    ///
+    /// # Returns
+    /// `ControlAction::Continue` to proceed, or `ControlAction::Abort` to cancel
+    #[allow(unused_variables)]
+    fn on_progress(&mut self, info: &ProgressInfo) -> ControlAction {
+        ControlAction::Continue
+    }
+
+    /// Called when an entry has been processed successfully
+    ///
+    /// # Arguments
+    /// * `name` - The name or path of the entry that was processed
+    ///
+    /// # Returns
+    /// `ControlAction::Continue` to proceed, or `ControlAction::Abort` to cancel
+    #[allow(unused_variables)]
+    fn on_entry_finished(&mut self, name: &str) -> ControlAction {
+        ControlAction::Continue
+    }
+
+    /// Called when a non-fatal warning occurs
+    ///
+    /// # Arguments
+    /// * `message` - The warning message
+    ///
+    /// # Returns
+    /// `ControlAction::Continue` to proceed, or `ControlAction::Abort` to cancel
+    #[allow(unused_variables)]
+    fn on_warning(&mut self, message: &str) -> ControlAction {
+        ControlAction::Continue
+    }
+
+    /// Called when the operation completes successfully
+    ///
+    /// # Returns
+    /// `ControlAction::Continue` (ignored) or `ControlAction::Abort` (ignored)
+    fn on_finished(&mut self) -> ControlAction {
+        ControlAction::Continue
+    }
+
+    /// Internal dispatcher method - do not override
+    ///
+    /// This method dispatches events to the appropriate handler methods.
+    /// Users should override the specific event methods instead.
+    #[doc(hidden)]
+    fn on_event(&mut self, event: &ArchiveEvent) -> ControlAction {
+        match event {
+            ArchiveEvent::Started(op_type) => self.on_started(*op_type),
+            ArchiveEvent::EntryStarted(name) => self.on_entry_started(name),
+            ArchiveEvent::Progress(info) => self.on_progress(info),
+            ArchiveEvent::EntryFinished(name) => self.on_entry_finished(name),
+            ArchiveEvent::Warning(msg) => self.on_warning(msg),
+            ArchiveEvent::Finished => self.on_finished(),
+        }
+    }
 }
 
 /// A no-op handler that does nothing and always continues

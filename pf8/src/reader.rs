@@ -1,8 +1,6 @@
 //! High-level reader for PF6/PF8 archives.
 
-use crate::callbacks::{
-    ArchiveEvent, ArchiveHandler, ControlAction, NoOpHandler, OperationType, ProgressInfo,
-};
+use crate::callbacks::{ArchiveHandler, ControlAction, NoOpHandler, OperationType, ProgressInfo};
 use crate::constants::{BUFFER_SIZE, UNENCRYPTED_FILTER};
 use crate::crypto;
 use crate::entry::Pf8Entry;
@@ -222,7 +220,7 @@ impl Pf8Reader {
         let mut total_bytes_processed = 0u64;
 
         // Notify task started
-        if handler.on_event(&ArchiveEvent::Started(OperationType::Unpack)) == ControlAction::Abort {
+        if handler.on_started(OperationType::Unpack) == ControlAction::Abort {
             return Err(Error::Cancelled);
         }
 
@@ -231,9 +229,7 @@ impl Pf8Reader {
             let entry_name = entry.path().to_string_lossy().to_string();
 
             // Notify entry started
-            if handler.on_event(&ArchiveEvent::EntryStarted(entry_name.clone()))
-                == ControlAction::Abort
-            {
+            if handler.on_entry_started(&entry_name) == ControlAction::Abort {
                 return Err(Error::Cancelled);
             }
 
@@ -257,13 +253,13 @@ impl Pf8Reader {
             total_bytes_processed += bytes_written;
 
             // Notify entry finished
-            if handler.on_event(&ArchiveEvent::EntryFinished(entry_name)) == ControlAction::Abort {
+            if handler.on_entry_finished(&entry_name) == ControlAction::Abort {
                 return Err(Error::Cancelled);
             }
         }
 
         // Notify task finished
-        handler.on_event(&ArchiveEvent::Finished);
+        handler.on_finished();
 
         Ok(())
     }
@@ -291,13 +287,12 @@ impl Pf8Reader {
         let entry_name = entry.path().to_string_lossy().to_string();
 
         // Notify task started
-        if handler.on_event(&ArchiveEvent::Started(OperationType::Unpack)) == ControlAction::Abort {
+        if handler.on_started(OperationType::Unpack) == ControlAction::Abort {
             return Err(Error::Cancelled);
         }
 
         // Notify entry started
-        if handler.on_event(&ArchiveEvent::EntryStarted(entry_name.clone())) == ControlAction::Abort
-        {
+        if handler.on_entry_started(&entry_name) == ControlAction::Abort {
             return Err(Error::Cancelled);
         }
 
@@ -314,12 +309,12 @@ impl Pf8Reader {
         )?;
 
         // Notify entry finished
-        if handler.on_event(&ArchiveEvent::EntryFinished(entry_name)) == ControlAction::Abort {
+        if handler.on_entry_finished(&entry_name) == ControlAction::Abort {
             return Err(Error::Cancelled);
         }
 
         // Notify task finished
-        handler.on_event(&ArchiveEvent::Finished);
+        handler.on_finished();
 
         Ok(())
     }
@@ -382,7 +377,7 @@ impl Pf8Reader {
                 total_files: Some(total_files),
                 current_file: entry.path().to_string_lossy().to_string(),
             };
-            if handler.on_event(&ArchiveEvent::Progress(progress)) == ControlAction::Abort {
+            if handler.on_progress(&progress) == ControlAction::Abort {
                 return Err(Error::Cancelled);
             }
         } else {
@@ -418,7 +413,7 @@ impl Pf8Reader {
                     total_files: Some(total_files),
                     current_file: entry.path().to_string_lossy().to_string(),
                 };
-                if handler.on_event(&ArchiveEvent::Progress(progress)) == ControlAction::Abort {
+                if handler.on_progress(&progress) == ControlAction::Abort {
                     return Err(Error::Cancelled);
                 }
             }
