@@ -1,6 +1,8 @@
 //! High-level reader for PF6/PF8 archives.
 
-use crate::callbacks::{NoOpCallback, ProgressCallback, ProgressInfo};
+use crate::callbacks::{
+    ArchiveEvent, ArchiveHandler, ControlAction, NoOpHandler, OperationType, ProgressInfo,
+};
 use crate::constants::{BUFFER_SIZE, UNENCRYPTED_FILTER};
 use crate::crypto;
 use crate::entry::Pf8Entry;
@@ -201,15 +203,15 @@ impl Pf8Reader {
 
     /// Extracts all files to the specified directory with memory optimization
     pub fn extract_all<P: AsRef<Path>>(&mut self, output_dir: P) -> Result<()> {
-        let mut callback = NoOpCallback;
-        self.extract_all_with_progress(output_dir, &mut callback)
+        let mut handler = NoOpHandler;
+        self.extract_all_with_progress(output_dir, &mut handler)
     }
 
     /// Extracts all files with progress reporting and cancellation support
-    pub fn extract_all_with_progress<P: AsRef<Path>, C: ProgressCallback>(
+    pub fn extract_all_with_progress<P: AsRef<Path>, H: ArchiveHandler>(
         &mut self,
         output_dir: P,
-        callback: &mut C,
+        handler: &mut H,
     ) -> Result<()> {
         let output_dir = output_dir.as_ref();
         let mut buffer = vec![0u8; BUFFER_SIZE];
@@ -219,11 +221,21 @@ impl Pf8Reader {
         let total_files = self.entries.len();
         let mut total_bytes_processed = 0u64;
 
+        // Notify task started
+        if handler.on_event(&ArchiveEvent::Started(OperationType::Unpack)) == ControlAction::Abort {
+            return Err(Error::Cancelled);
+        }
+
         for (index, entry) in self.entries.clone().iter().enumerate() {
             let file_path = output_dir.join(entry.path());
+            let entry_name = entry.path().to_string_lossy().to_string();
 
-            // Notify file start
-            callback.on_file_start(entry.path(), index, total_files)?;
+            // Notify entry started
+            if handler.on_event(&ArchiveEvent::EntryStarted(entry_name.clone()))
+                == ControlAction::Abort
+            {
+                return Err(Error::Cancelled);
+            }
 
             // Create parent directories if they don't exist
             if let Some(parent) = file_path.parent() {
@@ -235,28 +247,33 @@ impl Pf8Reader {
                 entry,
                 &file_path,
                 &mut buffer,
-                index,
+                index + 1,
                 total_files,
                 total_bytes_processed,
                 total_bytes,
-                callback,
+                handler,
             )?;
 
             total_bytes_processed += bytes_written;
 
-            // Notify file complete
-            callback.on_file_complete(entry.path(), index)?;
+            // Notify entry finished
+            if handler.on_event(&ArchiveEvent::EntryFinished(entry_name)) == ControlAction::Abort {
+                return Err(Error::Cancelled);
+            }
         }
+
+        // Notify task finished
+        handler.on_event(&ArchiveEvent::Finished);
 
         Ok(())
     }
 
     /// Extracts a single file with progress reporting
-    pub fn extract_file_with_progress<P: AsRef<Path>, Q: AsRef<Path>, C: ProgressCallback>(
+    pub fn extract_file_with_progress<P: AsRef<Path>, Q: AsRef<Path>, H: ArchiveHandler>(
         &mut self,
         archive_path: P,
         output_path: Q,
-        callback: &mut C,
+        handler: &mut H,
     ) -> Result<()> {
         // Create parent directories if they don't exist
         if let Some(parent) = output_path.as_ref().parent() {
@@ -270,40 +287,55 @@ impl Pf8Reader {
             .clone();
 
         let mut buffer = vec![0u8; BUFFER_SIZE];
+        let total_bytes = entry.size() as u64;
+        let entry_name = entry.path().to_string_lossy().to_string();
 
-        // Notify file start
-        callback.on_file_start(entry.path(), 0, 1)?;
+        // Notify task started
+        if handler.on_event(&ArchiveEvent::Started(OperationType::Unpack)) == ControlAction::Abort {
+            return Err(Error::Cancelled);
+        }
+
+        // Notify entry started
+        if handler.on_event(&ArchiveEvent::EntryStarted(entry_name.clone())) == ControlAction::Abort
+        {
+            return Err(Error::Cancelled);
+        }
 
         // Extract with progress
         self.extract_entry_with_progress(
             &entry,
             output_path,
             &mut buffer,
-            0,
+            1,
             1,
             0,
-            entry.size() as u64,
-            callback,
+            total_bytes,
+            handler,
         )?;
 
-        // Notify file complete
-        callback.on_file_complete(entry.path(), 0)?;
+        // Notify entry finished
+        if handler.on_event(&ArchiveEvent::EntryFinished(entry_name)) == ControlAction::Abort {
+            return Err(Error::Cancelled);
+        }
+
+        // Notify task finished
+        handler.on_event(&ArchiveEvent::Finished);
 
         Ok(())
     }
 
     /// Extracts a single entry using streaming with progress reporting
     #[allow(clippy::too_many_arguments)]
-    fn extract_entry_with_progress<P: AsRef<Path>, C: ProgressCallback>(
+    fn extract_entry_with_progress<P: AsRef<Path>, H: ArchiveHandler>(
         &mut self,
         entry: &Pf8Entry,
         output_path: P,
         buffer: &mut [u8],
-        current_file_index: usize,
+        processed_files: usize,
         total_files: usize,
         total_bytes_processed: u64,
         total_bytes: u64,
-        callback: &mut C,
+        handler: &mut H,
     ) -> Result<u64> {
         use std::io::Write;
 
@@ -344,15 +376,15 @@ impl Pf8Reader {
 
             // Report progress
             let progress = ProgressInfo {
+                processed_bytes: total_bytes_processed + current_file_bytes,
+                total_bytes: Some(total_bytes),
+                processed_files,
+                total_files: Some(total_files),
                 current_file: entry.path().to_string_lossy().to_string(),
-                current_file_index,
-                total_files,
-                current_file_bytes,
-                current_file_total: file_size as u64,
-                total_bytes_processed: total_bytes_processed + current_file_bytes,
-                total_bytes,
             };
-            callback.on_progress(&progress)?;
+            if handler.on_event(&ArchiveEvent::Progress(progress)) == ControlAction::Abort {
+                return Err(Error::Cancelled);
+            }
         } else {
             // Large file: stream in chunks
             let buffer_size = buffer.len();
@@ -380,15 +412,15 @@ impl Pf8Reader {
 
                 // Report progress
                 let progress = ProgressInfo {
+                    processed_bytes: total_bytes_processed + current_file_bytes,
+                    total_bytes: Some(total_bytes),
+                    processed_files,
+                    total_files: Some(total_files),
                     current_file: entry.path().to_string_lossy().to_string(),
-                    current_file_index,
-                    total_files,
-                    current_file_bytes,
-                    current_file_total: file_size as u64,
-                    total_bytes_processed: total_bytes_processed + current_file_bytes,
-                    total_bytes,
                 };
-                callback.on_progress(&progress)?;
+                if handler.on_event(&ArchiveEvent::Progress(progress)) == ControlAction::Abort {
+                    return Err(Error::Cancelled);
+                }
             }
         }
 

@@ -1,18 +1,17 @@
-//! Example demonstrating progress callbacks and cancellation support for extraction.
+//! Example demonstrating the new unified ArchiveHandler interface with event-driven callbacks.
 
-use pf8::{CancellationToken, Pf8Archive, ProgressCallback, ProgressInfo, Result};
+use pf8::{ArchiveEvent, ArchiveHandler, ControlAction, Pf8Archive, Result};
 use std::io::Write;
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-/// A simple progress callback that prints progress to stdout
-struct SimpleProgressCallback {
+/// A simple handler that prints progress to stdout
+struct SimpleProgressHandler {
     last_percentage: f64,
 }
 
-impl SimpleProgressCallback {
+impl SimpleProgressHandler {
     fn new() -> Self {
         Self {
             last_percentage: 0.0,
@@ -20,79 +19,82 @@ impl SimpleProgressCallback {
     }
 }
 
-impl ProgressCallback for SimpleProgressCallback {
-    fn on_progress(&mut self, progress: &ProgressInfo) -> Result<()> {
-        let percentage = progress.overall_progress();
-
-        // Only print when progress changes by at least 1%
-        if (percentage - self.last_percentage).abs() >= 1.0 {
-            print!(
-                "\rProgress: {:.1}% ({}/{} files, {}/{} bytes)",
-                percentage,
-                progress.current_file_index + 1,
-                progress.total_files,
-                progress.total_bytes_processed,
-                progress.total_bytes
-            );
-            std::io::stdout().flush().unwrap();
-            self.last_percentage = percentage;
+impl ArchiveHandler for SimpleProgressHandler {
+    fn on_event(&mut self, event: &ArchiveEvent) -> ControlAction {
+        match event {
+            ArchiveEvent::Started(op_type) => {
+                println!("🚀 Operation started: {}", op_type);
+                ControlAction::Continue
+            }
+            ArchiveEvent::EntryStarted(name) => {
+                println!("  📄 Processing: {}", name);
+                ControlAction::Continue
+            }
+            ArchiveEvent::Progress(info) => {
+                if let Some(percentage) = info.overall_progress() {
+                    // Only print when progress changes by at least 1%
+                    if (percentage - self.last_percentage).abs() >= 1.0 {
+                        print!(
+                            "\r  Progress: {:.1}% ({}/",
+                            percentage, info.processed_files
+                        );
+                        if let Some(total) = info.total_files {
+                            print!("{}", total);
+                        } else {
+                            print!("?");
+                        }
+                        print!(" files, {} bytes", info.processed_bytes);
+                        if let Some(total) = info.total_bytes {
+                            print!("/{} bytes", total);
+                        }
+                        print!(")");
+                        std::io::stdout().flush().unwrap();
+                        self.last_percentage = percentage;
+                    }
+                }
+                ControlAction::Continue
+            }
+            ArchiveEvent::EntryFinished(name) => {
+                println!("\n  ✓ Completed: {}", name);
+                ControlAction::Continue
+            }
+            ArchiveEvent::Warning(msg) => {
+                println!("  ⚠ Warning: {}", msg);
+                ControlAction::Continue
+            }
+            ArchiveEvent::Finished => {
+                println!("\n✅ Operation finished successfully!");
+                ControlAction::Continue
+            }
         }
-
-        Ok(())
-    }
-
-    fn on_file_start(&mut self, path: &Path, file_index: usize, total_files: usize) -> Result<()> {
-        println!(
-            "\n[{}/{}] Starting extraction: {}",
-            file_index + 1,
-            total_files,
-            path.display()
-        );
-        Ok(())
-    }
-
-    fn on_file_complete(&mut self, path: &Path, _file_index: usize) -> Result<()> {
-        println!("  ✓ Completed: {}", path.display());
-        Ok(())
     }
 }
 
-/// A callback that can be cancelled externally
-struct CancellableProgressCallback {
-    token: CancellationToken,
-    inner: SimpleProgressCallback,
+/// A handler that can be cancelled externally
+struct CancellableHandler {
+    cancel_flag: Arc<AtomicBool>,
+    inner: SimpleProgressHandler,
 }
 
-impl CancellableProgressCallback {
-    fn new(token: CancellationToken) -> Self {
+impl CancellableHandler {
+    fn new(cancel_flag: Arc<AtomicBool>) -> Self {
         Self {
-            token,
-            inner: SimpleProgressCallback::new(),
+            cancel_flag,
+            inner: SimpleProgressHandler::new(),
         }
     }
 }
 
-impl ProgressCallback for CancellableProgressCallback {
-    fn on_progress(&mut self, progress: &ProgressInfo) -> Result<()> {
-        if self.token.is_cancelled() {
-            println!("\n⚠ Extraction cancelled by user!");
-            return Err(pf8::Error::Cancelled);
+impl ArchiveHandler for CancellableHandler {
+    fn on_event(&mut self, event: &ArchiveEvent) -> ControlAction {
+        // Check if cancellation was requested
+        if self.cancel_flag.load(Ordering::SeqCst) {
+            println!("\n⚠ Cancellation requested!");
+            return ControlAction::Abort;
         }
-        self.inner.on_progress(progress)
-    }
 
-    fn on_file_start(&mut self, path: &Path, file_index: usize, total_files: usize) -> Result<()> {
-        if self.token.is_cancelled() {
-            return Err(pf8::Error::Cancelled);
-        }
-        self.inner.on_file_start(path, file_index, total_files)
-    }
-
-    fn on_file_complete(&mut self, path: &Path, file_index: usize) -> Result<()> {
-        if self.token.is_cancelled() {
-            return Err(pf8::Error::Cancelled);
-        }
-        self.inner.on_file_complete(path, file_index)
+        // Delegate to inner handler
+        self.inner.on_event(event)
     }
 }
 
@@ -118,9 +120,8 @@ fn main() -> Result<()> {
     // Example 1: Extract with simple progress reporting
     println!("\n=== Example 1: Extract with progress reporting ===");
     let mut archive = Pf8Archive::open(&archive_path)?;
-    let mut callback = SimpleProgressCallback::new();
-    archive.extract_all_with_progress(&output_dir, &mut callback)?;
-    println!("\n✓ Extraction completed successfully!");
+    let mut handler = SimpleProgressHandler::new();
+    archive.extract_all_with_progress(&output_dir, &mut handler)?;
 
     // Clean up output directory for next example
     std::fs::remove_dir_all(&output_dir).unwrap();
@@ -128,26 +129,22 @@ fn main() -> Result<()> {
     // Example 2: Extract with cancellation support
     println!("\n=== Example 2: Extract with cancellation (simulated) ===");
     let mut archive = Pf8Archive::open(&archive_path)?;
-    let token = CancellationToken::new();
-    let token_clone = token.clone();
 
-    // Simulate cancellation after a short delay (in real use, this would be triggered by user input)
+    // Create a cancellation flag
     let cancel_flag = Arc::new(AtomicBool::new(false));
     let cancel_flag_clone = cancel_flag.clone();
 
+    // Simulate cancellation after a short delay (in real use, this would be triggered by user input)
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(100));
-        if !cancel_flag_clone.load(Ordering::SeqCst) {
-            token_clone.cancel();
-            println!("\n⚠ Cancellation triggered!");
-        }
+        cancel_flag_clone.store(true, Ordering::SeqCst);
+        println!("\n⚠ Cancellation signal sent!");
     });
 
-    let mut callback = CancellableProgressCallback::new(token);
-    match archive.extract_all_with_progress(&output_dir, &mut callback) {
+    let mut handler = CancellableHandler::new(cancel_flag.clone());
+    match archive.extract_all_with_progress(&output_dir, &mut handler) {
         Ok(_) => {
-            cancel_flag.store(true, Ordering::SeqCst);
-            println!("\n✓ Extraction completed before cancellation");
+            println!("\n✓ Extraction completed");
         }
         Err(pf8::Error::Cancelled) => {
             println!("✓ Extraction was successfully cancelled");
