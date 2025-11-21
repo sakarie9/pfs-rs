@@ -2,9 +2,10 @@ use anyhow::Result;
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
 use log::info;
-use pf8::{self};
+use pf8::{self, ArchiveHandler, ControlAction};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 mod util;
 
@@ -17,6 +18,9 @@ struct Args {
     /// Force overwrite existing files
     #[arg(short = 'f', long = "overwrite", default_value_t = false)]
     overwrite: bool,
+    /// Quiet mode (no progress output)
+    #[arg(short = 'q', long = "quiet", default_value_t = false)]
+    quiet: bool,
     /// Input file or dir use for drag-in
     #[arg(hide = true)]
     inputs: Vec<PathBuf>,
@@ -58,6 +62,7 @@ fn command_unpack_paths(
     output: &Path,
     split_output: bool,
     filters: Option<&[&str]>,
+    quiet: bool,
 ) -> Result<()> {
     for path in paths {
         let output_path = if split_output {
@@ -75,10 +80,19 @@ fn command_unpack_paths(
             pf8::Pf8Archive::open(path)?
         };
 
-        // Use memory-optimized extraction
-        archive.extract_all(&output_path)?;
+        // Use handler for progress tracking and statistics
+        if quiet {
+            let mut handler = pf8::callbacks::NoOpHandler;
+            archive.extract_all_with_progress(&output_path, &mut handler)?;
+        } else {
+            println!("Unpacking: {}", path.display());
+            let mut handler = ProgressHandler::new();
+            archive.extract_all_with_progress(&output_path, &mut handler)?;
 
-        info!("Completed unpacking");
+            // Use source pfs file size as total size
+            let total_bytes = fs::metadata(path)?.len();
+            handler.print_summary(total_bytes);
+        }
     }
     Ok(())
 }
@@ -87,6 +101,7 @@ fn command_pack(
     output: &Path,
     filters: Option<&[&str]>,
     overwrite: bool,
+    quiet: bool,
 ) -> Result<()> {
     if !input.is_dir() {
         panic!("Input must be a directory");
@@ -106,19 +121,78 @@ fn command_pack(
     };
     info!("Packing {input:?} to {output_file:?}");
 
-    match filters {
-        Some(filters) => pf8::create_from_dir_with_patterns(input, output_file, filters),
-        None => pf8::create_from_dir(input, output_file),
-    }?;
+    if quiet {
+        match filters {
+            Some(filters) => pf8::create_from_dir_with_patterns(input, output_file, filters),
+            None => pf8::create_from_dir(input, output_file),
+        }?;
+    } else {
+        println!("Packing: {}", input.display());
+        let mut handler = ProgressHandler::new();
+        match filters {
+            Some(filters) => pf8::create_from_dir_with_patterns_and_progress(
+                input,
+                output_file,
+                filters,
+                &mut handler,
+            ),
+            None => pf8::create_from_dir_with_progress(input, output_file, &mut handler),
+        }?;
 
-    info!("Completed packing");
+        // Get archive file size
+        let total_bytes = fs::metadata(output_file)?.len();
+        handler.print_summary(total_bytes);
+    }
+
     Ok(())
 }
+/// Progress handler that collects statistics and prints progress
+struct ProgressHandler {
+    start_time: Instant,
+    total_files: usize,
+}
+
+impl ProgressHandler {
+    fn new() -> Self {
+        Self {
+            start_time: Instant::now(),
+            total_files: 0,
+        }
+    }
+
+    fn print_summary(&self, total_bytes: u64) {
+        let elapsed = self.start_time.elapsed();
+        let elapsed_secs = elapsed.as_secs_f64();
+        let speed = if elapsed_secs > 0.0 {
+            total_bytes as f64 / elapsed_secs / 1024.0 / 1024.0
+        } else {
+            0.0
+        };
+
+        println!(
+            "Done - Time: {:.2}s, Files: {}, Size: {:.2} MB, Speed: {:.2} MB/s",
+            elapsed_secs,
+            self.total_files,
+            total_bytes as f64 / 1024.0 / 1024.0,
+            speed
+        );
+    }
+}
+
+impl ArchiveHandler for ProgressHandler {
+    fn on_entry_started(&mut self, name: &str) -> ControlAction {
+        self.total_files += 1;
+        println!("{}", name);
+        ControlAction::Continue
+    }
+}
+
 fn command_pack_multiple_inputs(
     inpath_dirs: &[PathBuf],
     inpath_files: &[PathBuf],
     output: &Path,
     filters: Option<&[&str]>,
+    quiet: bool,
 ) -> Result<()> {
     info!("Packing to {output:?}");
 
@@ -139,9 +213,18 @@ fn command_pack_multiple_inputs(
         builder.add_file(file)?;
     }
 
-    builder.write_to_file(output)?;
+    if quiet {
+        builder.write_to_file(output)?;
+    } else {
+        println!("Packing: Multiple inputs");
+        let mut handler = ProgressHandler::new();
+        builder.write_to_file_with_progress(output, &mut handler)?;
 
-    info!("Completed packing");
+        // Get archive file size
+        let total_bytes = fs::metadata(output)?.len();
+        handler.print_summary(total_bytes);
+    }
+
     Ok(())
 }
 
@@ -150,6 +233,7 @@ fn main() -> Result<()> {
 
     let cli = Args::parse();
     let overwrite = cli.overwrite;
+    let quiet = cli.quiet;
     match &cli.command {
         Some(command) => match command {
             Commands::Unpack {
@@ -158,10 +242,10 @@ fn main() -> Result<()> {
                 split_output,
             } => {
                 let files = util::glob_expand(input)?;
-                command_unpack_paths(&files, output, *split_output, None)?;
+                command_unpack_paths(&files, output, *split_output, None, quiet)?;
             }
             Commands::Pack { input, output } => {
-                command_pack(input, output, None, overwrite)?;
+                command_pack(input, output, None, overwrite, quiet)?;
             }
             Commands::List { input } => {
                 #[cfg(feature = "display")]
@@ -188,7 +272,7 @@ fn main() -> Result<()> {
                                 let output = result.suggested_output.ok_or_else(|| {
                                     anyhow::anyhow!("Cannot determine output path for unpacking")
                                 })?;
-                                command_unpack_paths(&pfs_files, &output, true, None)?;
+                                command_unpack_paths(&pfs_files, &output, true, None, quiet)?;
                             }
                             util::InputType::PackFiles { dirs, files } => {
                                 // 打包操作
@@ -198,7 +282,13 @@ fn main() -> Result<()> {
                                     })?;
                                 let final_output =
                                     util::get_final_output_path(suggested_output, overwrite)?;
-                                command_pack_multiple_inputs(&dirs, &files, &final_output, None)?;
+                                command_pack_multiple_inputs(
+                                    &dirs,
+                                    &files,
+                                    &final_output,
+                                    None,
+                                    quiet,
+                                )?;
                             }
                         }
                     }

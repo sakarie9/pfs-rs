@@ -1,5 +1,6 @@
 //! Builder for creating PF8 archives.
 
+use crate::callbacks::{ArchiveHandler, ControlAction, OperationType};
 use crate::constants::UNENCRYPTED_FILTER;
 use crate::entry::Pf8Entry;
 use crate::error::{Error, Result};
@@ -196,6 +197,16 @@ impl Pf8Builder {
         self.write_to_writer(&mut writer)
     }
 
+    /// Writes the archive to a file with progress callback
+    pub fn write_to_file_with_progress<P: AsRef<Path>, H: ArchiveHandler>(
+        &self,
+        output_path: P,
+        handler: &mut H,
+    ) -> Result<()> {
+        let mut writer = Pf8Writer::create(output_path)?;
+        self.write_to_writer_with_progress(&mut writer, handler)
+    }
+
     /// Returns sorted file indices
     fn sorted_indices(&self) -> Vec<usize> {
         let mut indices: Vec<_> = (0..self.files.len()).collect();
@@ -253,6 +264,81 @@ impl Pf8Builder {
         }
 
         writer.finalize()?;
+        Ok(())
+    }
+
+    /// Writes the archive using the provided writer with progress callback
+    pub fn write_to_writer_with_progress<H: ArchiveHandler>(
+        &self,
+        writer: &mut Pf8Writer,
+        handler: &mut H,
+    ) -> Result<()> {
+        if self.files.is_empty() {
+            return Err(Error::InvalidFormat("No files to archive".to_string()));
+        }
+
+        // Notify start
+        if handler.on_started(OperationType::Pack) == ControlAction::Abort {
+            return Err(Error::Cancelled);
+        }
+
+        // Build entries with metadata
+        let mut entries = Vec::new();
+        let mut total_data_size = 0u32;
+
+        // Sort files by archive path index
+        let indices = self.sorted_indices();
+
+        for &i in &indices {
+            let (source_path, archive_path) = &self.files[i];
+            let metadata = fs::metadata(source_path)?;
+            let size = metadata.len();
+
+            if size > u32::MAX as u64 {
+                return Err(Error::InvalidFormat(format!(
+                    "File too large: {} bytes (max: {} bytes)",
+                    size,
+                    u32::MAX
+                )));
+            }
+
+            let size = size as u32;
+            let patterns: Vec<&str> = self
+                .unencrypted_patterns
+                .iter()
+                .map(|s| s.as_str())
+                .collect();
+            let entry = Pf8Entry::new(archive_path, total_data_size, size, &patterns);
+
+            entries.push((entry, source_path.clone()));
+            total_data_size += size;
+        }
+
+        // Write header and entries
+        writer.write_header(&entries.iter().map(|(entry, _)| entry).collect::<Vec<_>>())?;
+
+        // Write file data using streaming to minimize memory usage with progress callback
+        for (entry, source_path) in entries {
+            let file_name = source_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            if handler.on_entry_started(&file_name) == ControlAction::Abort {
+                return Err(Error::Cancelled);
+            }
+
+            writer.write_file_data(&entry, &source_path)?;
+
+            if handler.on_entry_finished(&file_name) == ControlAction::Abort {
+                return Err(Error::Cancelled);
+            }
+        }
+
+        writer.finalize()?;
+
+        handler.on_finished();
         Ok(())
     }
 

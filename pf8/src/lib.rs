@@ -111,7 +111,10 @@ pub use reader::Pf8Reader;
 pub use writer::Pf8Writer;
 
 // Re-export convenience functions
-pub use archive::{create_from_dir, create_from_dir_with_patterns, extract, extract_with_patterns};
+pub use archive::{
+    create_from_dir, create_from_dir_with_patterns, create_from_dir_with_patterns_and_progress,
+    create_from_dir_with_progress, extract, extract_with_patterns,
+};
 
 #[cfg(feature = "display")]
 pub mod display;

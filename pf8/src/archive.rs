@@ -143,3 +143,31 @@ pub fn create_from_dir_with_patterns<P: AsRef<Path>, Q: AsRef<Path>>(
     builder.add_dir(input_dir)?;
     builder.write_to_file(output_path)
 }
+
+/// Creates a PF8 archive from a directory with progress callback
+pub fn create_from_dir_with_progress<P: AsRef<Path>, Q: AsRef<Path>, H: ArchiveHandler>(
+    input_dir: P,
+    output_path: Q,
+    handler: &mut H,
+) -> Result<()> {
+    let mut builder = Pf8Builder::new();
+    builder.add_dir(input_dir)?;
+    builder.write_to_file_with_progress(output_path, handler)
+}
+
+/// Creates a PF8 archive from a directory with custom unencrypted patterns and progress callback
+pub fn create_from_dir_with_patterns_and_progress<
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+    H: ArchiveHandler,
+>(
+    input_dir: P,
+    output_path: Q,
+    unencrypted_patterns: &[&str],
+    handler: &mut H,
+) -> Result<()> {
+    let mut builder = Pf8Builder::new();
+    builder.unencrypted_patterns(unencrypted_patterns);
+    builder.add_dir(input_dir)?;
+    builder.write_to_file_with_progress(output_path, handler)
+}
