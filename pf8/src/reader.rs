@@ -1,7 +1,7 @@
 //! High-level reader for PF6/PF8 archives.
 
 use crate::callbacks::{ArchiveHandler, ControlAction, NoOpHandler, OperationType, ProgressInfo};
-use crate::constants::{BUFFER_SIZE, UNENCRYPTED_FILTER};
+use crate::constants::BUFFER_SIZE;
 use crate::crypto;
 use crate::entry::Pf8Entry;
 use crate::error::{Error, Result};
@@ -33,14 +33,6 @@ pub struct Pf8Reader {
 impl Pf8Reader {
     /// Opens a PF6/PF8 archive for reading with minimal memory usage
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Self::open_with_unencrypted_patterns(path, &UNENCRYPTED_FILTER)
-    }
-
-    /// Creates a reader with custom unencrypted patterns
-    pub fn open_with_unencrypted_patterns<P: AsRef<Path>>(
-        path: P,
-        unencrypted_patterns: &[&str],
-    ) -> Result<Self> {
         let mut file = File::open(path)?;
 
         // Read only the header and index data into memory
@@ -69,7 +61,7 @@ impl Pf8Reader {
         let mut entry_map = HashMap::new();
 
         for (index, raw_entry) in raw_entries.into_iter().enumerate() {
-            let entry = Pf8Entry::from_raw_with_format(raw_entry, unencrypted_patterns, format);
+            let entry = Pf8Entry::from_raw_with_format(raw_entry, format);
             let path_string = entry.path().to_string_lossy().to_string();
             entry_map.insert(path_string, index);
             entries.push(entry);

@@ -94,35 +94,9 @@ pub fn list_archive<P: AsRef<Path>>(archive_path: P) -> Result<()> {
     Ok(())
 }
 
-/// Lists the contents of a PF8 archive with custom unencrypted patterns
-#[cfg(feature = "display")]
-pub fn list_archive_with_patterns<P: AsRef<Path>>(
-    archive_path: P,
-    unencrypted_patterns: &[&str],
-) -> Result<()> {
-    let archive = Pf8Archive::open_with_patterns(&archive_path, unencrypted_patterns)?;
-    let file_list = FileList::from_archive(&archive)?;
-
-    println!("{}", archive_path.as_ref().display());
-    println!();
-    println!("{file_list}");
-
-    Ok(())
-}
-
 // Fallback implementations when display feature is not enabled
 #[cfg(not(feature = "display"))]
 pub fn list_archive<P: AsRef<Path>>(_archive_path: P) -> Result<()> {
-    Err(crate::error::Error::InvalidFormat(
-        "Display functionality requires the 'display' feature".to_string(),
-    ))
-}
-
-#[cfg(not(feature = "display"))]
-pub fn list_archive_with_patterns<P: AsRef<Path>>(
-    _archive_path: P,
-    _unencrypted_patterns: &[&str],
-) -> Result<()> {
     Err(crate::error::Error::InvalidFormat(
         "Display functionality requires the 'display' feature".to_string(),
     ))

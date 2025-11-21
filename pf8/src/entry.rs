@@ -19,9 +19,9 @@ pub struct Pf8Entry {
 
 impl Pf8Entry {
     /// Creates a new entry from raw data
-    pub fn from_raw(raw: RawEntry, unencrypted_patterns: &[&str]) -> Self {
+    pub fn from_raw(raw: RawEntry) -> Self {
         let path = utils::pf8_path_to_pathbuf(raw.name.trim_end_matches('\0'));
-        let encrypted = !utils::matches_any_pattern(&raw.name, unencrypted_patterns);
+        let encrypted = !utils::matches_any_pattern(&raw.name);
 
         Self {
             raw,
@@ -31,16 +31,12 @@ impl Pf8Entry {
     }
 
     /// Creates a new entry from raw data with format awareness
-    pub fn from_raw_with_format(
-        raw: RawEntry,
-        unencrypted_patterns: &[&str],
-        format: ArchiveFormat,
-    ) -> Self {
+    pub fn from_raw_with_format(raw: RawEntry, format: ArchiveFormat) -> Self {
         let path = utils::pf8_path_to_pathbuf(raw.name.trim_end_matches('\0'));
         // In PF6 format, no files are encrypted
         let encrypted = match format {
             ArchiveFormat::Pf6 => false,
-            ArchiveFormat::Pf8 => !utils::matches_any_pattern(&raw.name, unencrypted_patterns),
+            ArchiveFormat::Pf8 => !utils::matches_any_pattern(&raw.name),
         };
 
         Self {
@@ -51,15 +47,10 @@ impl Pf8Entry {
     }
 
     /// Creates a new entry for building archives
-    pub fn new<P: AsRef<Path>>(
-        path: P,
-        offset: u32,
-        size: u32,
-        unencrypted_patterns: &[&str],
-    ) -> Self {
+    pub fn new<P: AsRef<Path>>(path: P, offset: u32, size: u32) -> Self {
         let path_ref = path.as_ref();
         let pf8_name = utils::pathbuf_to_pf8_path(path_ref);
-        let encrypted = !utils::matches_any_pattern(&pf8_name, unencrypted_patterns);
+        let encrypted = !utils::matches_any_pattern(&pf8_name);
 
         Self {
             raw: RawEntry {

@@ -1,7 +1,6 @@
 //! Builder for creating PF8 archives.
 
 use crate::callbacks::{ArchiveHandler, ControlAction, OperationType};
-use crate::constants::UNENCRYPTED_FILTER;
 use crate::entry::Pf8Entry;
 use crate::error::{Error, Result};
 use crate::writer::Pf8Writer;
@@ -13,8 +12,6 @@ use walkdir::WalkDir;
 pub struct Pf8Builder {
     /// Files to include in the archive
     files: Vec<(PathBuf, PathBuf)>, // (source_path, archive_path)
-    /// Patterns for files that should not be encrypted
-    unencrypted_patterns: Vec<String>,
     /// Base path for relative file paths
     base_path: Option<PathBuf>,
 }
@@ -24,7 +21,6 @@ impl Pf8Builder {
     pub fn new() -> Self {
         Self {
             files: Vec::new(),
-            unencrypted_patterns: UNENCRYPTED_FILTER.iter().map(|&s| s.to_string()).collect(),
             base_path: None,
         }
     }
@@ -32,20 +28,6 @@ impl Pf8Builder {
     /// Sets the base path for relative file paths
     pub fn base_path<P: AsRef<Path>>(&mut self, path: P) -> &mut Self {
         self.base_path = Some(path.as_ref().to_path_buf());
-        self
-    }
-
-    /// Adds patterns for files that should not be encrypted
-    pub fn unencrypted_extensions(&mut self, extensions: &[&str]) -> &mut Self {
-        self.unencrypted_patterns
-            .extend(extensions.iter().map(|&ext| ext.to_string()));
-        self
-    }
-
-    /// Adds custom unencrypted patterns
-    pub fn unencrypted_patterns(&mut self, patterns: &[&str]) -> &mut Self {
-        self.unencrypted_patterns
-            .extend(patterns.iter().map(|&pattern| pattern.to_string()));
         self
     }
 
@@ -244,12 +226,7 @@ impl Pf8Builder {
             }
 
             let size = size as u32;
-            let patterns: Vec<&str> = self
-                .unencrypted_patterns
-                .iter()
-                .map(|s| s.as_str())
-                .collect();
-            let entry = Pf8Entry::new(archive_path, total_data_size, size, &patterns);
+            let entry = Pf8Entry::new(archive_path, total_data_size, size);
 
             entries.push((entry, source_path.clone()));
             total_data_size += size;
@@ -303,12 +280,7 @@ impl Pf8Builder {
             }
 
             let size = size as u32;
-            let patterns: Vec<&str> = self
-                .unencrypted_patterns
-                .iter()
-                .map(|s| s.as_str())
-                .collect();
-            let entry = Pf8Entry::new(archive_path, total_data_size, size, &patterns);
+            let entry = Pf8Entry::new(archive_path, total_data_size, size);
 
             entries.push((entry, source_path.clone()));
             total_data_size += size;

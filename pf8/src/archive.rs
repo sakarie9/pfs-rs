@@ -23,15 +23,6 @@ impl Pf8Archive {
         Ok(Self { reader })
     }
 
-    /// Opens a PF6/PF8 archive with custom unencrypted patterns
-    pub fn open_with_patterns<P: AsRef<Path>>(
-        path: P,
-        unencrypted_patterns: &[&str],
-    ) -> Result<Self> {
-        let reader = Pf8Reader::open_with_unencrypted_patterns(path, unencrypted_patterns)?;
-        Ok(Self { reader })
-    }
-
     /// Creates a new archive builder (PF8 format with encryption)
     pub fn builder() -> Pf8Builder {
         Pf8Builder::new()
@@ -105,16 +96,6 @@ pub fn extract<P: AsRef<Path>, Q: AsRef<Path>>(archive_path: P, output_dir: Q) -
     archive.extract_all(output_dir)
 }
 
-/// Extracts a PF8 archive with custom unencrypted patterns
-pub fn extract_with_patterns<P: AsRef<Path>, Q: AsRef<Path>>(
-    archive_path: P,
-    output_dir: Q,
-    unencrypted_patterns: &[&str],
-) -> Result<()> {
-    let mut archive = Pf8Archive::open_with_patterns(archive_path, unencrypted_patterns)?;
-    archive.extract_all(output_dir)
-}
-
 /// Extracts a PF8 archive to the specified directory with progress reporting
 pub fn extract_with_progress<P: AsRef<Path>, Q: AsRef<Path>, H: ArchiveHandler>(
     archive_path: P,
@@ -132,18 +113,6 @@ pub fn create_from_dir<P: AsRef<Path>, Q: AsRef<Path>>(input_dir: P, output_path
     builder.write_to_file(output_path)
 }
 
-/// Creates a PF8 archive from a directory with custom unencrypted patterns
-pub fn create_from_dir_with_patterns<P: AsRef<Path>, Q: AsRef<Path>>(
-    input_dir: P,
-    output_path: Q,
-    unencrypted_patterns: &[&str],
-) -> Result<()> {
-    let mut builder = Pf8Builder::new();
-    builder.unencrypted_patterns(unencrypted_patterns);
-    builder.add_dir(input_dir)?;
-    builder.write_to_file(output_path)
-}
-
 /// Creates a PF8 archive from a directory with progress callback
 pub fn create_from_dir_with_progress<P: AsRef<Path>, Q: AsRef<Path>, H: ArchiveHandler>(
     input_dir: P,
@@ -151,23 +120,6 @@ pub fn create_from_dir_with_progress<P: AsRef<Path>, Q: AsRef<Path>, H: ArchiveH
     handler: &mut H,
 ) -> Result<()> {
     let mut builder = Pf8Builder::new();
-    builder.add_dir(input_dir)?;
-    builder.write_to_file_with_progress(output_path, handler)
-}
-
-/// Creates a PF8 archive from a directory with custom unencrypted patterns and progress callback
-pub fn create_from_dir_with_patterns_and_progress<
-    P: AsRef<Path>,
-    Q: AsRef<Path>,
-    H: ArchiveHandler,
->(
-    input_dir: P,
-    output_path: Q,
-    unencrypted_patterns: &[&str],
-    handler: &mut H,
-) -> Result<()> {
-    let mut builder = Pf8Builder::new();
-    builder.unencrypted_patterns(unencrypted_patterns);
     builder.add_dir(input_dir)?;
     builder.write_to_file_with_progress(output_path, handler)
 }

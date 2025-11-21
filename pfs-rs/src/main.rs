@@ -61,7 +61,6 @@ fn command_unpack_paths(
     paths: &[PathBuf],
     output: &Path,
     split_output: bool,
-    filters: Option<&[&str]>,
     quiet: bool,
 ) -> Result<()> {
     for path in paths {
@@ -74,11 +73,7 @@ fn command_unpack_paths(
         fs::create_dir_all(&output_path)?;
         info!("Unpacking {path:?} to {output_path:?}");
 
-        let mut archive = if let Some(filters) = filters {
-            pf8::Pf8Archive::open_with_patterns(path, filters)?
-        } else {
-            pf8::Pf8Archive::open(path)?
-        };
+        let mut archive = pf8::Pf8Archive::open(path)?;
 
         // Use handler for progress tracking and statistics
         if quiet {
@@ -96,13 +91,7 @@ fn command_unpack_paths(
     }
     Ok(())
 }
-fn command_pack(
-    input: &Path,
-    output: &Path,
-    filters: Option<&[&str]>,
-    overwrite: bool,
-    quiet: bool,
-) -> Result<()> {
+fn command_pack(input: &Path, output: &Path, overwrite: bool, quiet: bool) -> Result<()> {
     if !input.is_dir() {
         panic!("Input must be a directory");
     }
@@ -122,22 +111,11 @@ fn command_pack(
     info!("Packing {input:?} to {output_file:?}");
 
     if quiet {
-        match filters {
-            Some(filters) => pf8::create_from_dir_with_patterns(input, output_file, filters),
-            None => pf8::create_from_dir(input, output_file),
-        }?;
+        pf8::create_from_dir(input, output_file)?;
     } else {
         println!("Packing: {}", input.display());
         let mut handler = ProgressHandler::new();
-        match filters {
-            Some(filters) => pf8::create_from_dir_with_patterns_and_progress(
-                input,
-                output_file,
-                filters,
-                &mut handler,
-            ),
-            None => pf8::create_from_dir_with_progress(input, output_file, &mut handler),
-        }?;
+        pf8::create_from_dir_with_progress(input, output_file, &mut handler)?;
 
         // Get archive file size
         let total_bytes = fs::metadata(output_file)?.len();
@@ -191,17 +169,12 @@ fn command_pack_multiple_inputs(
     inpath_dirs: &[PathBuf],
     inpath_files: &[PathBuf],
     output: &Path,
-    filters: Option<&[&str]>,
     quiet: bool,
 ) -> Result<()> {
     info!("Packing to {output:?}");
 
     // Use new pf8 library API with builder
     let mut builder = pf8::Pf8Builder::new();
-
-    if let Some(filters) = filters {
-        builder.unencrypted_patterns(filters);
-    }
 
     // Add directories
     for dir in inpath_dirs {
@@ -242,10 +215,10 @@ fn main() -> Result<()> {
                 split_output,
             } => {
                 let files = util::glob_expand(input)?;
-                command_unpack_paths(&files, output, *split_output, None, quiet)?;
+                command_unpack_paths(&files, output, *split_output, quiet)?;
             }
             Commands::Pack { input, output } => {
-                command_pack(input, output, None, overwrite, quiet)?;
+                command_pack(input, output, overwrite, quiet)?;
             }
             Commands::List { input } => {
                 #[cfg(feature = "display")]
@@ -272,7 +245,7 @@ fn main() -> Result<()> {
                                 let output = result.suggested_output.ok_or_else(|| {
                                     anyhow::anyhow!("Cannot determine output path for unpacking")
                                 })?;
-                                command_unpack_paths(&pfs_files, &output, true, None, quiet)?;
+                                command_unpack_paths(&pfs_files, &output, true, quiet)?;
                             }
                             util::InputType::PackFiles { dirs, files } => {
                                 // 打包操作
@@ -282,13 +255,7 @@ fn main() -> Result<()> {
                                     })?;
                                 let final_output =
                                     util::get_final_output_path(suggested_output, overwrite)?;
-                                command_pack_multiple_inputs(
-                                    &dirs,
-                                    &files,
-                                    &final_output,
-                                    None,
-                                    quiet,
-                                )?;
+                                command_pack_multiple_inputs(&dirs, &files, &final_output, quiet)?;
                             }
                         }
                     }

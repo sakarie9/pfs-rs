@@ -26,7 +26,6 @@ fn test_create_and_read_simple_archive() {
 
     // Create archive using builder
     let mut builder = Pf8Builder::new();
-    builder.unencrypted_extensions(&[".txt"]);
     builder.add_dir(&input_dir).unwrap();
     builder.write_to_file(&archive_path).unwrap();
 
@@ -34,7 +33,7 @@ fn test_create_and_read_simple_archive() {
     assert!(archive_path.exists());
 
     // Read archive and verify contents
-    let mut archive = Pf8Archive::open_with_patterns(&archive_path, &[".txt"]).unwrap();
+    let mut archive = Pf8Archive::open(&archive_path).unwrap();
 
     assert_eq!(archive.len(), 3);
     assert!(archive.contains("file1.txt"));
@@ -113,33 +112,6 @@ fn test_builder_add_file_as() {
 }
 
 #[test]
-fn test_encryption_patterns() {
-    let temp_dir = TempDir::new().unwrap();
-    let input_dir = temp_dir.path().join("input");
-    let archive_path = temp_dir.path().join("test.pfs");
-
-    fs::create_dir_all(&input_dir).unwrap();
-    fs::write(input_dir.join("config.txt"), b"Config data").unwrap();
-    fs::write(input_dir.join("data.bin"), b"Binary data").unwrap();
-
-    // Create archive with .txt files unencrypted
-    let mut builder = Pf8Builder::new();
-    builder.unencrypted_extensions(&[".txt"]);
-    builder.add_dir(&input_dir).unwrap();
-    builder.write_to_file(&archive_path).unwrap();
-
-    // Open with same patterns
-    let mut archive = Pf8Archive::open_with_patterns(&archive_path, &[".txt"]).unwrap();
-
-    // Verify we can read both files
-    let config_content = archive.read_file("config.txt").unwrap();
-    assert_eq!(config_content, b"Config data");
-
-    let data_content = archive.read_file("data.bin").unwrap();
-    assert_eq!(data_content, b"Binary data");
-}
-
-#[test]
 fn test_empty_archive() {
     let temp_dir = TempDir::new().unwrap();
     let archive_path = temp_dir.path().join("empty.pfs");
@@ -194,7 +166,6 @@ fn test_reader_low_level_api() {
 /// - **Multiple file types**: Text files, binary files, empty files, large files
 /// - **Complex directory structures**: Nested directories up to 3 levels deep
 /// - **UTF-8 content**: Files containing Unicode characters (Chinese text)
-/// - **Mixed encryption**: Some files encrypted, others unencrypted based on patterns
 /// - **Special file names**: Files with spaces, dashes, and underscores
 /// - **File metadata**: Verifies both content and file size integrity
 ///
@@ -267,9 +238,8 @@ fn test_pack_unpack_integrity() {
     )
     .unwrap();
 
-    // Create archive with mixed encryption patterns
+    // Create archive
     let mut builder = Pf8Builder::new();
-    builder.unencrypted_extensions(&[".txt", ".ini", ".md"]);
     builder.add_dir(&original_dir).unwrap();
     builder.write_to_file(&archive_path).unwrap();
 
@@ -277,8 +247,7 @@ fn test_pack_unpack_integrity() {
     assert!(archive_path.exists());
 
     // Extract the archive
-    let mut archive =
-        Pf8Archive::open_with_patterns(&archive_path, &[".txt", ".ini", ".md"]).unwrap();
+    let mut archive = Pf8Archive::open(&archive_path).unwrap();
     archive.extract_all(&extracted_dir).unwrap();
 
     // Function to recursively compare directories
@@ -351,23 +320,4 @@ fn test_pack_unpack_integrity() {
         .read_file("nested/deep/structure/nested_file.txt")
         .unwrap();
     assert_eq!(nested_content, b"Deep nested content");
-
-    // Test encryption status of different file types
-    let readme_entry = archive.get_entry("readme.txt").unwrap();
-    assert!(
-        !readme_entry.is_encrypted(),
-        "Text files should not be encrypted"
-    );
-
-    let binary_entry = archive.get_entry("data.bin").unwrap();
-    assert!(
-        binary_entry.is_encrypted(),
-        "Binary files should be encrypted"
-    );
-
-    let config_entry = archive.get_entry("config.ini").unwrap();
-    assert!(
-        !config_entry.is_encrypted(),
-        "INI files should not be encrypted"
-    );
 }

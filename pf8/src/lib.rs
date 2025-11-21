@@ -61,9 +61,6 @@
 //! // Create a new archive builder
 //! let mut builder = Pf8Builder::new();
 //!
-//! // Configure encryption filters (files matching these patterns won't be encrypted)
-//! builder.unencrypted_extensions(&[".txt", ".md", ".ini"]);
-//!
 //! // Add files and directories
 //! builder.add_dir(&input_dir)?;
 //! builder.add_file(&single_file)?;
@@ -111,10 +108,7 @@ pub use reader::Pf8Reader;
 pub use writer::Pf8Writer;
 
 // Re-export convenience functions
-pub use archive::{
-    create_from_dir, create_from_dir_with_patterns, create_from_dir_with_patterns_and_progress,
-    create_from_dir_with_progress, extract, extract_with_patterns,
-};
+pub use archive::{create_from_dir, create_from_dir_with_progress, extract};
 
 #[cfg(feature = "display")]
 pub mod display;

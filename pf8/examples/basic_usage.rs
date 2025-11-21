@@ -66,10 +66,6 @@ fn main() -> Result<()> {
     let archive_path2 = temp_dir.join("custom.pfs");
     let mut builder = Pf8Builder::new();
 
-    // Configure which files should NOT be encrypted
-    builder.unencrypted_extensions(&[".txt", ".ini", ".md"]);
-    builder.unencrypted_patterns(&["readme"]);
-
     // Add files
     builder.add_dir(&input_dir)?;
     builder.write_to_file(&archive_path2)?;
@@ -78,8 +74,7 @@ fn main() -> Result<()> {
 
     // Example 6: Reading the custom archive with appropriate patterns
     println!("\n6. Reading custom archive...");
-    let custom_archive =
-        Pf8Archive::open_with_patterns(&archive_path2, &[".txt", ".ini", ".md", "readme"])?;
+    let custom_archive = Pf8Archive::open(&archive_path2)?;
 
     for entry in custom_archive.entries() {
         println!(

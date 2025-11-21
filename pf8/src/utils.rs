@@ -2,6 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::constants::UNENCRYPTED_FILTER;
+
 /// Converts a PF8-style filename (backslash-separated) to a PathBuf
 pub fn pf8_path_to_pathbuf(pf8_path: &str) -> PathBuf {
     pf8_path.split('\\').collect()
@@ -16,8 +18,8 @@ pub fn pathbuf_to_pf8_path(path: &Path) -> String {
 }
 
 /// Checks if a file path matches any of the given patterns
-pub fn matches_any_pattern(path: &str, patterns: &[&str]) -> bool {
-    patterns.iter().any(|&pattern| {
+pub fn matches_any_pattern(path: &str) -> bool {
+    UNENCRYPTED_FILTER.to_vec().iter().any(|&pattern| {
         if pattern.starts_with('.') {
             // Extension pattern
             path.ends_with(pattern)
@@ -41,15 +43,5 @@ mod tests {
 
         let converted_back = pathbuf_to_pf8_path(&pathbuf);
         assert_eq!(converted_back, pf8_path);
-    }
-
-    #[test]
-    fn test_pattern_matching() {
-        assert!(matches_any_pattern("file.txt", &[".txt"]));
-        assert!(matches_any_pattern("file.TXT", &[".TXT"]));
-        assert!(!matches_any_pattern("file.bin", &[".txt"]));
-
-        assert!(matches_any_pattern("config.ini", &["config.ini"]));
-        assert!(matches_any_pattern("path/config.ini", &["config.ini"]));
     }
 }
