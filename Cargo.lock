@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "pf8"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "human_bytes",
  "sha1",
