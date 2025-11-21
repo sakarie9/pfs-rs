@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
-use log::info;
+use log::{error, info};
 use pf8::{self, ArchiveHandler, ControlAction};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -80,7 +80,6 @@ fn command_unpack_paths(
             let mut handler = pf8::callbacks::NoOpHandler;
             archive.extract_all_with_progress(&output_path, &mut handler)?;
         } else {
-            println!("Unpacking: {}", path.display());
             let mut handler = ProgressHandler::new();
             archive.extract_all_with_progress(&output_path, &mut handler)?;
 
@@ -113,7 +112,6 @@ fn command_pack(input: &Path, output: &Path, overwrite: bool, quiet: bool) -> Re
     if quiet {
         pf8::create_from_dir(input, output_file)?;
     } else {
-        println!("Packing: {}", input.display());
         let mut handler = ProgressHandler::new();
         pf8::create_from_dir_with_progress(input, output_file, &mut handler)?;
 
@@ -147,8 +145,8 @@ impl ProgressHandler {
             0.0
         };
 
-        println!(
-            "Done - Time: {:.2}s, Files: {}, Size: {:.2} MB, Speed: {:.2} MB/s",
+        info!(
+            "Done: Time: {:.2}s, Files: {}, Size: {:.2} MB, Speed: {:.2} MB/s",
             elapsed_secs,
             self.total_files,
             total_bytes as f64 / 1024.0 / 1024.0,
@@ -160,7 +158,7 @@ impl ProgressHandler {
 impl ArchiveHandler for ProgressHandler {
     fn on_entry_started(&mut self, name: &str) -> ControlAction {
         self.total_files += 1;
-        println!("{}", name);
+        info!("Processing: {}", name);
         ControlAction::Continue
     }
 }
@@ -189,7 +187,6 @@ fn command_pack_multiple_inputs(
     if quiet {
         builder.write_to_file(output)?;
     } else {
-        println!("Packing: Multiple inputs");
         let mut handler = ProgressHandler::new();
         builder.write_to_file_with_progress(output, &mut handler)?;
 
@@ -201,9 +198,16 @@ fn command_pack_multiple_inputs(
     Ok(())
 }
 
-fn main() -> Result<()> {
+fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    if let Err(e) = run() {
+        error!("Fatal error: {e}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
     let cli = Args::parse();
     let overwrite = cli.overwrite;
     let quiet = cli.quiet;
@@ -260,7 +264,7 @@ fn main() -> Result<()> {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Error processing inputs: {e}");
+                        error!("Error processing inputs: {e}");
                         std::process::exit(1);
                     }
                 }
