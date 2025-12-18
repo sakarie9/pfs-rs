@@ -1,6 +1,6 @@
 [package]
 name = "pf8"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "A Rust library for encoding and decoding artemis PF8 archive files"
 keywords = ["pfs", "pf8", "archive", "galgame"]

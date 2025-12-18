@@ -16,7 +16,7 @@ anyhow = "1.0.100"
 clap = { version = "4.5.53", features = ["derive"] }
 env_logger = "0.11.8"
 glob = "0.3.3"
-log = "0.4.28"
+log = "0.4.29"
 sha1 = "0.10.6"
 walkdir = "2.5.0"
 tabled = { version = "0.20.0", default-features = false, features = ["derive"] }
