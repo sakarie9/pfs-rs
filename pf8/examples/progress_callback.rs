@@ -24,12 +24,12 @@ impl VerboseProgressHandler {
 
 impl ArchiveHandler for VerboseProgressHandler {
     fn on_started(&mut self, op_type: OperationType) -> ControlAction {
-        println!("🚀 Operation started: {}", op_type);
+        println!("Operation started: {}", op_type);
         ControlAction::Continue
     }
 
     fn on_entry_started(&mut self, name: &str) -> ControlAction {
-        println!("  📄 Processing: {}", name);
+        println!("  Processing: {}", name);
         ControlAction::Continue
     }
 
@@ -59,17 +59,17 @@ impl ArchiveHandler for VerboseProgressHandler {
     }
 
     fn on_entry_finished(&mut self, name: &str) -> ControlAction {
-        println!("\n  ✓ Completed: {}", name);
+        println!("\n  Completed: {}", name);
         ControlAction::Continue
     }
 
     fn on_warning(&mut self, message: &str) -> ControlAction {
-        println!("  ⚠ Warning: {}", message);
+        println!("  Warning: {}", message);
         ControlAction::Continue
     }
 
     fn on_finished(&mut self) -> ControlAction {
-        println!("\n✅ Operation finished successfully!");
+        println!("\nOperation finished successfully!");
         ControlAction::Continue
     }
 }
@@ -92,7 +92,7 @@ impl CancellableHandler {
 impl ArchiveHandler for CancellableHandler {
     fn on_started(&mut self, op_type: OperationType) -> ControlAction {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            println!("\n⚠ Cancellation requested!");
+            println!("\nCancellation requested!");
             return ControlAction::Abort;
         }
         self.inner.on_started(op_type)
@@ -100,7 +100,7 @@ impl ArchiveHandler for CancellableHandler {
 
     fn on_entry_started(&mut self, name: &str) -> ControlAction {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            println!("\n⚠ Cancellation requested!");
+            println!("\nCancellation requested!");
             return ControlAction::Abort;
         }
         self.inner.on_entry_started(name)
@@ -108,7 +108,7 @@ impl ArchiveHandler for CancellableHandler {
 
     fn on_progress(&mut self, info: &ProgressInfo) -> ControlAction {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            println!("\n⚠ Cancellation requested!");
+            println!("\nCancellation requested!");
             return ControlAction::Abort;
         }
         self.inner.on_progress(info)
@@ -116,7 +116,7 @@ impl ArchiveHandler for CancellableHandler {
 
     fn on_entry_finished(&mut self, name: &str) -> ControlAction {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            println!("\n⚠ Cancellation requested!");
+            println!("\nCancellation requested!");
             return ControlAction::Abort;
         }
         self.inner.on_entry_finished(name)
@@ -124,7 +124,7 @@ impl ArchiveHandler for CancellableHandler {
 
     fn on_warning(&mut self, message: &str) -> ControlAction {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            println!("\n⚠ Cancellation requested!");
+            println!("\nCancellation requested!");
             return ControlAction::Abort;
         }
         self.inner.on_warning(message)
@@ -175,19 +175,19 @@ fn main() -> Result<()> {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(100));
         cancel_flag_clone.store(true, Ordering::SeqCst);
-        println!("\n⚠ Cancellation signal sent!");
+        println!("\nCancellation signal sent!");
     });
 
     let mut handler = CancellableHandler::new(cancel_flag.clone());
     match archive.extract_all_with_progress(&output_dir, &mut handler) {
         Ok(_) => {
-            println!("\n✓ Extraction completed");
+            println!("\nExtraction completed");
         }
         Err(pf8::Error::Cancelled) => {
-            println!("✓ Extraction was successfully cancelled");
+            println!("Extraction was successfully cancelled");
         }
         Err(e) => {
-            println!("✗ Error: {}", e);
+            println!("Error: {}", e);
             return Err(e);
         }
     }

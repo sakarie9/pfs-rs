@@ -291,19 +291,15 @@ impl Pf8Builder {
 
         // Write file data using streaming to minimize memory usage with progress callback
         for (entry, source_path) in entries {
-            let file_name = source_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string();
+            let archive_path = entry.path().to_string_lossy().to_string();
 
-            if handler.on_entry_started(&file_name) == ControlAction::Abort {
+            if handler.on_entry_started(&archive_path) == ControlAction::Abort {
                 return Err(Error::Cancelled);
             }
 
             writer.write_file_data(&entry, &source_path)?;
 
-            if handler.on_entry_finished(&file_name) == ControlAction::Abort {
+            if handler.on_entry_finished(&archive_path) == ControlAction::Abort {
                 return Err(Error::Cancelled);
             }
         }
