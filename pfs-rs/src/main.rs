@@ -88,7 +88,9 @@ fn command_unpack_paths(
     for path in paths {
         let output_path = determine_extract_output(path, output, separate);
         fs::create_dir_all(&output_path)?;
-        info!("Extracting {:?} to {:?}", path, output_path);
+        if !quiet {
+            info!("Extracting {:?} to {:?}", path, output_path);
+        }
 
         let mut archive = pf8::Pf8Archive::open(path)?;
 
@@ -121,14 +123,16 @@ fn command_pack(
     }
 
     let output_file = determine_pack_output(&[input.to_path_buf()], output, overwrite)?;
-    info!("Creating archive {:?} from {:?}", output_file, input);
+    if !quiet {
+        info!("Creating archive {:?} from {:?}", output_file, input);
+    }
 
     // Smart detection: if directory contains system.ini, pack contents only
     // This handles classic PFS game directory structure automatically
     let has_system_ini = !no_smart_detect && util::has_system_ini(input);
     let should_preserve_dir = preserve_dir_name && !has_system_ini;
 
-    if has_system_ini && preserve_dir_name {
+    if has_system_ini && preserve_dir_name && !quiet {
         info!("Detected system.ini, packing directory contents only (classic PFS structure)");
     }
 
@@ -250,7 +254,9 @@ fn command_pack_multiple_inputs_with_flags(
 }
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp(None)
+        .init();
 
     if let Err(e) = run() {
         error!("Fatal error: {e}");
