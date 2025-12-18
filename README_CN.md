@@ -8,54 +8,67 @@
 
 > [Artemis](https://www.ies-net.com/) 是一个游戏引擎。它使用 pfs 文件来存储游戏资源。
 
-本项目提供了用于解包和打包 Artemis 系统使用的 pfs 文件的工具。它完全用 Rust 编写。
+该项目提供了解包和打包 Artemis 系统使用的 pfs 文件的工具。完全用 Rust 编写。
 
 ## 功能
 
 - 解包 pfs 文件
-- 打包 pfs 文件
+- 创建 pfs 压缩包
+- 列出压缩包内容
+- 游戏目录的智能检测（system.ini）
+- rsync 风格的尾部斜杠语义以实现精确控制
 
-## 用法
+## 使用方法
 
 ```plain
-用法：pfs-rs [选项] [命令]
+使用方法: pfs-rs [OPTIONS] [COMMAND]
 
-命令：
-  unpack  解包 Artemis pfs 存档
-  pack    将目录打包成 Artemis pfs 存档
-  list    列出 Artemis pfs 存档内容
-  help    打印此消息或给定子命令的帮助信息
+命令:
+  extract  从 pfs 压缩包中解包文件
+  create   从文件/目录创建 pfs 压缩包
+  list     列出 pfs 压缩包的内容
+  help     打印此消息或给定子命令的帮助
 
-选项：
-  -f, --overwrite  强制覆盖现有文件
-  -h, --help       打印帮助信息
-  -V, --version    打印版本信息
+全局选项:
+  -C, --directory <DIRECTORY>  切换到指定目录后执行操作
+  -f, --force                  强制覆盖现有文件
+  -q, --quiet                  安静模式（无进度输出）
+  -v, --verbose                详细模式（显示详细信息）
+  -h, --help                   打印帮助
+  -V, --version                打印版本
 ```
 
-**注意：** 命令也支持缩写别名：
+**注意：** 命令支持别名：
 
-- `unpack` 可以缩写为 `u`
-- `pack` 可以缩写为 `p`  
-- `list` 可以缩写为 `ls`
+- `extract` → `x`, `unpack`, `u`
+- `create` → `c`, `pack`, `p`  
+- `list` → `l`, `ls`
 
 ### 解包
 
 ```plain
-用法：pfs-rs unpack [选项] <输入> <输出>
+使用方法: pfs-rs extract [OPTIONS] <INPUT> [OUTPUT]
 
-参数：
-  <输入>   输入 pfs 文件，可以是 glob 模式
-  <输出>  输出目录
+参数:
+  <INPUT>   输入 pfs 文件，可以是通配符模式
+  [OUTPUT]  输出目录（可选，默认：自动检测）
 
-选项：
-  -s, --split-output  解包单个文件而不是所有相关文件
-  -h, --help          打印帮助信息 (使用 '--help' 查看更多)
+选项:
+  -s, --separate                   将每个压缩包解包到单独的目录
+      --strip-components <NUMBER>  解包时从文件名中删除 NUMBER 个前导组件
+  -C, --directory <DIRECTORY>      切换到指定目录后执行操作
+  -f, --force                      强制覆盖现有文件
+  -q, --quiet                      安静模式（无进度输出）
+  -v, --verbose                    详细模式（显示详细信息）
+  -h, --help                       打印帮助（使用 '--help' 查看更多）
 ```
 
 解包 .pfs 文件：
 
 ```bash
-pfs-rs unpack <pfs文件路径> <解压目录路径>
+pfs-rs extract <pfs_文件路径> [输出目录]
+# 或使用别名:
+pfs-rs x <pfs_文件路径> [输出目录]
 ```
 
 示例：
@@ -72,116 +85,154 @@ pfs-rs unpack <pfs文件路径> <解压目录路径>
     └── root.pfs.005
 ```
 
-- 解包一个 pfs 文件
+- 解包单个 pfs 文件
 
   ```bash
-  pfs-rs unpack root.pfs root
+  pfs-rs extract root.pfs root
+  # 或直接使用
+  pfs-rs x root.pfs
+  # 自动解包到 root/ 目录
   ```
 
-- 使用 glob 模式解包所有 pfs 文件
+- 使用通配符模式解包所有 pfs 文件
 
   ```bash
-  pfs-rs unpack "*.pfs*" .
+  pfs-rs extract "*.pfs*" .
   ```
 
-  会将所有 .pfs 文件解包到 `./root/` 目录。
+  将所有 .pfs 文件解包到 `./root/`。
 
-  > 你也可以将 pfs 文件拖拽到可执行文件上来解包它们
+  > 你也可以将 pfs 文件拖到执行文件上来解包它们
 
 ### 打包
 
 ```plain
-用法：pfs-rs pack <输入> <输出>
 
-参数：
-  <输入>   输入目录
-  <输出>  输出 pfs 文件
+使用方法: pfs-rs create [OPTIONS] <INPUTS>...
 
-选项：
-  -h, --help  打印帮助信息
+参数:
+  <INPUTS>...  输入文件或目录（支持尾部 / 以实现 rsync 风格行为）
+
+选项:
+  -o, --output <OUTPUT>        输出 pfs 文件（可选，默认：root.pfs）
+      --no-smart-detect        禁用智能检测（如 system.ini 自动路径剥离）
+  -C, --directory <DIRECTORY>  切换到指定目录后执行操作
+  -f, --force                  强制覆盖现有文件
+  -q, --quiet                  安静模式（无进度输出）
+  -v, --verbose                详细模式（显示详细信息）
+  -h, --help                   打印帮助（使用 '--help' 查看更多）
 ```
 
-将文件打包成 .pfs 文件：
+将文件打包为 .pfs 文件：
 
 ```bash
-pfs-rs pack <目录路径> <pfs文件路径>
+pfs-rs create <输入目录或文件> [-o 输出.pfs]
+# 或使用别名:
+pfs-rs c <输入目录或文件> [-o 输出.pfs]
 ```
 
-示例：
+#### 示例 1：打包具有游戏结构的目录
 
 ```plain
-├──Artemis
-│   ├── font
-│   ├── image
-│   ├── pc
-│   ├── script
-│   ├── sound
-│   ├── system
-│   └── system.ini
-├──pfs-rs
+├── Artemis
+│   ├── font
+│   ├── image
+│   ├── pc
+│   ├── script
+│   ├── sound
+│   ├── system
+│   └── system.ini
+└── pfs-rs
 ```
 
-- 打包整个游戏文件夹
+```bash
+# 打包目录内容
+# 使用尾部斜杠仅打包内容
+# 压缩包包含：font, script, system.ini 等
+pfs-rs create Artemis/ -o root.pfs
 
-  ```bash
-  pfs-rs pack Artemis root.pfs
-  ```
+# 打包目录内容（智能检测删除 Artemis/）
+# 因为 Artemis/system.ini 存在，智能检测会删除外层目录
+# 压缩包包含：font, script, system.ini 等
+pfs-rs create Artemis -o root.pfs
 
-- 打包多个文件夹
+# 打包目录本身（保留 image/ 在压缩包中）
+# 压缩包包含：image/img1.png, image/img2.png 等
+pfs-rs create Artemis/image -o root.pfs.001
 
-  ```plain
-  ├── Artemis
-  │   ├── font
-  │   ├── image
-  │   ├── pc
-  │   ├── script
-  │   ├── sound
-  │   ├── system
-  │   ├── system.ini
-  │   └── pfs-rs
-  ```
+# 禁用智能检测
+# 在 artemis 中不会生效因为结构不对
+# 你应该使用 pfs-rs create Artemis/ -o root.pfs
+# 压缩包包含：Artemis/font, Artemis/script 等
+pfs-rs create Artemis --no-smart-detect -o badpfs.pfs
+```
 
-  ```bash
-  pfs-rs font image pc system.ini
-  ```
+#### 示例 2：打包多个目录
 
-  会将指定的目录和文件打包到 root.pfs。
+```bash
+pfs-rs create font image pc script -o game.pfs
+# 压缩包包含：font/, image/, pc/, script/
+```
 
-  > 你也可以将文件夹拖拽到可执行文件上来打包它们
+#### 示例 3：默认输出（root.pfs）
+
+```bash
+pfs-rs create Artemis
+# 创建：root.pfs
+# 压缩包包含：font/, image/, pc/, script/
+# 如果 root.pfs 存在：
+#   - 未使用 -f：创建 root.pfs.000, root.pfs.001 等
+#   - 使用 -f：覆盖 root.pfs
+```
+
+> 你也可以将文件夹拖到执行文件上来打包它们
+
+**rsync 风格的尾部斜杠语义：**
+
+- `dir/` - 仅打包目录**内容**
+- `dir` - 打包目录**本身**（保留目录名）
+
+当单个目录包含 `system.ini`（经典游戏结构）时，智能检测会自动删除外层目录，无论是否使用斜杠。
 
 ### 列表
 
 ```plain
-用法：pfs-rs list <输入>
+使用方法: pfs-rs list [OPTIONS] <INPUT>
 
-参数：
-  <输入>  输入 pfs 文件
+参数:
+  <INPUT>  输入 pfs 文件
 
-选项：
-  -h, --help  打印帮助信息
+选项:
+  -l, --long                   显示详细信息
+  -C, --directory <DIRECTORY>  切换到指定目录后执行操作
+  -f, --force                  强制覆盖现有文件
+  -q, --quiet                  安静模式（无进度输出）
+  -v, --verbose                详细模式（显示详细信息）
+  -h, --help                   打印帮助
 ```
 
 列出 .pfs 文件的内容：
 
 ```bash
-pfs-rs list <pfs文件路径>
-# 或使用缩写别名：
-pfs-rs ls <pfs文件路径>
+pfs-rs list <pfs_文件路径>
+# 或使用别名:
+pfs-rs l <pfs_文件路径>
 ```
 
 示例：
 
 ```bash
+# 简单列表
 pfs-rs list root.pfs
-# 或
-pfs-rs ls root.pfs
-```
 
-这将显示一个格式化的表格，显示存档中的所有文件及其大小和加密状态。
+# 带有大小的详细列表
+pfs-rs list root.pfs -l
+pfs-rs l root.pfs --long
+```
 
 ## 相关项目
 
-- [pfs-android](https://github.com/sakarie9/pfs-android): 一个用于解包 Artemis pfs 文件的 Android 应用，基于 pf8。
+- [pfs-android](https://github.com/sakarie9/pfs-android)：一个用于解包 Artemis pfs 文件的 Android 应用，基于 pf8。
 
 ## 致谢
 

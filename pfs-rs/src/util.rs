@@ -1,6 +1,11 @@
 use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 
+/// Checks if a directory contains system.ini file (classic PFS game structure)
+pub fn has_system_ini(dir: &Path) -> bool {
+    dir.join("system.ini").exists()
+}
+
 pub fn is_file_pf8_from_filename(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
         if name.contains(".pfs") {
@@ -83,15 +88,8 @@ pub enum InputType {
     },
 }
 
-/// 输入处理结果
-#[derive(Debug)]
-pub struct InputProcessResult {
-    pub input_type: InputType,
-    pub suggested_output: Option<PathBuf>,
-}
-
 /// 处理多种形式的CLI输入路径
-pub fn process_cli_inputs(inputs: Vec<PathBuf>) -> Result<InputProcessResult> {
+pub fn process_cli_inputs(inputs: Vec<PathBuf>) -> Result<InputType> {
     if inputs.is_empty() {
         return Err(anyhow!("No input provided"));
     }
@@ -124,49 +122,19 @@ pub fn process_cli_inputs(inputs: Vec<PathBuf>) -> Result<InputProcessResult> {
     match (has_pfs, has_pack_input) {
         (true, false) => {
             // 只有 PFS 文件，执行解包操作
-            let suggested_output = get_pfs_basepath(&pfs_files[0]).ok();
-            Ok(InputProcessResult {
-                input_type: InputType::PfsFiles(pfs_files),
-                suggested_output,
-            })
+            Ok(InputType::PfsFiles(pfs_files))
         }
         (false, true) => {
             // 只有目录或文件，执行打包操作
-            let base_dir = if !directories.is_empty() {
-                directories[0].parent().map(|p| p.to_path_buf())
-            } else {
-                regular_files[0].parent().map(|p| p.to_path_buf())
-            };
-
-            let suggested_output = base_dir.map(|dir| dir.join("root.pfs"));
-
-            Ok(InputProcessResult {
-                input_type: InputType::PackFiles {
-                    dirs: directories,
-                    files: regular_files,
-                },
-                suggested_output,
+            Ok(InputType::PackFiles {
+                dirs: directories,
+                files: regular_files,
             })
         }
         (true, true) => Err(anyhow!(
             "Cannot mix PFS files and pack inputs (directories/files) in the same operation"
         )),
         (false, false) => Err(anyhow!("No valid input found")),
-    }
-}
-
-/// 根据overwrite标志获取最终输出路径
-pub fn get_final_output_path(suggested_output: PathBuf, overwrite: bool) -> Result<PathBuf> {
-    if overwrite {
-        Ok(suggested_output)
-    } else {
-        // 如果是.pfs文件，尝试找到不存在的文件名
-        if let Some(parent) = suggested_output.parent()
-            && let Some(stem) = suggested_output.file_stem().and_then(|s| s.to_str())
-        {
-            return try_get_next_nonexist_pfs(parent, stem);
-        }
-        Ok(suggested_output)
     }
 }
 
@@ -247,7 +215,7 @@ mod tests {
 
         let result = process_cli_inputs(vec![pfs_file1.clone(), pfs_file2.clone()])?;
 
-        match result.input_type {
+        match result {
             InputType::PfsFiles(files) => {
                 assert_eq!(files.len(), 2);
                 assert_eq!(files[0], pfs_file1);
@@ -256,7 +224,6 @@ mod tests {
             _ => panic!("Expected PfsFiles variant"),
         }
 
-        assert!(result.suggested_output.is_some());
         Ok(())
     }
 
@@ -269,7 +236,7 @@ mod tests {
 
         let result = process_cli_inputs(vec![normal_file.clone(), sub_dir.clone()])?;
 
-        match result.input_type {
+        match result {
             InputType::PackFiles { dirs, files } => {
                 assert_eq!(dirs.len(), 1);
                 assert_eq!(files.len(), 1);
@@ -279,9 +246,6 @@ mod tests {
             _ => panic!("Expected PackFiles variant"),
         }
 
-        assert!(result.suggested_output.is_some());
-        let suggested = result.suggested_output.unwrap();
-        assert_eq!(suggested.file_name().unwrap(), "root.pfs");
         Ok(())
     }
 
@@ -321,31 +285,5 @@ mod tests {
         let result = process_cli_inputs(vec![nonexistent]);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
-    }
-
-    #[test]
-    fn test_get_final_output_path_overwrite() -> Result<()> {
-        let suggested = PathBuf::from("/test/output.pfs");
-        let result = get_final_output_path(suggested.clone(), true)?;
-        assert_eq!(result, suggested);
-        Ok(())
-    }
-
-    #[test]
-    fn test_get_final_output_path_no_overwrite() -> Result<()> {
-        let temp_dir = tempfile::tempdir()?;
-        let suggested = temp_dir.path().join("test.pfs");
-
-        let result = get_final_output_path(suggested.clone(), false)?;
-        // 因为文件不存在，应该返回原始路径
-        assert_eq!(result, suggested);
-
-        // 创建文件后，应该返回不同的路径
-        fs::File::create(&suggested)?;
-        let result2 = get_final_output_path(suggested.clone(), false)?;
-        assert_ne!(result2, suggested);
-        assert!(result2.to_string_lossy().contains("test.pfs.000"));
-
-        Ok(())
     }
 }
