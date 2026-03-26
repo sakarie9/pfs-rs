@@ -110,7 +110,7 @@ pub fn parse_entries(data: &[u8]) -> Result<(Vec<RawEntry>, ArchiveFormat)> {
         }
 
         let name_bytes = &data[cursor..cursor + name_length as usize];
-        let name = String::from_utf8(name_bytes.to_vec())?;
+        let name = String::from_utf8_lossy(name_bytes).into_owned();
         cursor += name_length as usize + 4; // Skip name and 4 zero bytes
 
         let offset = read_u32_le(data, cursor)?;
