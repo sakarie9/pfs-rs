@@ -104,7 +104,7 @@ fn command_unpack_paths(
 
             // Use source pfs file size as total size
             let total_bytes = fs::metadata(path)?.len();
-            handler.print_summary(total_bytes);
+            handler.print_summary(total_bytes, &output_path);
         }
     }
     Ok(())
@@ -157,7 +157,7 @@ fn command_pack(
 
         // Get archive file size
         let total_bytes = fs::metadata(&output_file)?.len();
-        handler.print_summary(total_bytes);
+        handler.print_summary(total_bytes, &output_file);
     }
 
     Ok(())
@@ -176,7 +176,7 @@ impl ProgressHandler {
         }
     }
 
-    fn print_summary(&self, total_bytes: u64) {
+    fn print_summary(&self, total_bytes: u64, output_path: &Path) {
         let elapsed = self.start_time.elapsed();
         let elapsed_secs = elapsed.as_secs_f64();
         let speed = if elapsed_secs > 0.0 {
@@ -184,7 +184,6 @@ impl ProgressHandler {
         } else {
             0.0
         };
-
         info!(
             "Done: Time: {:.2}s, Files: {}, Size: {:.2} MB, Speed: {:.2} MB/s",
             elapsed_secs,
@@ -192,6 +191,7 @@ impl ProgressHandler {
             total_bytes as f64 / 1024.0 / 1024.0,
             speed
         );
+        info!("Output: {}", fs::canonicalize(output_path).unwrap_or_else(|_| output_path.to_path_buf()).display());
     }
 }
 
@@ -247,7 +247,7 @@ fn command_pack_multiple_inputs_with_flags(
 
         // Get archive file size
         let total_bytes = fs::metadata(&output_file)?.len();
-        handler.print_summary(total_bytes);
+        handler.print_summary(total_bytes, &output_file);
     }
 
     Ok(())
