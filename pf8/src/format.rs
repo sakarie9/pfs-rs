@@ -14,6 +14,8 @@
 //    |filesize_offsets[] 8 //offset from faddr 0xf, last is 00 00 00 00 00 00 00 00
 //    |filesize_count_offset 4 //offset from faddr 0x7
 
+use encoding_rs::SHIFT_JIS;
+
 use crate::error::{Error, Result};
 
 /// PF6 magic number
@@ -80,6 +82,20 @@ pub fn read_u32_le(data: &[u8], offset: usize) -> Result<u32> {
     ]))
 }
 
+/// Decodes a filename byte slice to a String.
+/// Tries UTF-8 first; falls back to Shift-JIS (CP932) for legacy Japanese archives.
+fn decode_filename(bytes: &[u8]) -> String {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_owned();
+    }
+    let (decoded, _, had_errors) = SHIFT_JIS.decode(bytes);
+    if had_errors {
+        // Neither UTF-8 nor valid Shift-JIS, contains replacement characters
+        eprintln!("Warning: filename contains unrecognizable bytes, some characters may be corrupted");
+    }
+    decoded.into_owned()
+}
+
 /// Parses the PF6/PF8 header and returns file entries along with format information
 pub fn parse_entries(data: &[u8]) -> Result<(Vec<RawEntry>, ArchiveFormat)> {
     let format = validate_magic(data)?;
@@ -110,7 +126,7 @@ pub fn parse_entries(data: &[u8]) -> Result<(Vec<RawEntry>, ArchiveFormat)> {
         }
 
         let name_bytes = &data[cursor..cursor + name_length as usize];
-        let name = String::from_utf8_lossy(name_bytes).into_owned();
+        let name = decode_filename(name_bytes);
         cursor += name_length as usize + 4; // Skip name and 4 zero bytes
 
         let offset = read_u32_le(data, cursor)?;

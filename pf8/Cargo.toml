@@ -12,6 +12,7 @@ readme = "README.md"
 thiserror = { workspace = true }
 sha1 = { workspace = true }
 walkdir = { workspace = true }
+encoding_rs = { workspace = true }
 
 # Optional dependencies for extra features
 human_bytes = { workspace = true, optional = true }
