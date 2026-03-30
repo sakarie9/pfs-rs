@@ -1,94 +1,125 @@
 use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 
-/// Checks if a directory contains system.ini file (classic PFS game structure)
-pub fn has_system_ini(dir: &Path) -> bool {
-    dir.join("system.ini").exists()
-}
+// --- PFS path helpers ---
 
+/// Returns true if the path looks like a PFS archive (contains ".pfs" in the filename).
 pub fn is_file_pf8_from_filename(path: &Path) -> bool {
-    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-        if name.contains(".pfs") {
-            return true;
-        }
-        false
-    } else {
-        false
-    }
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .map(|name| name.contains(".pfs"))
+        .unwrap_or(false)
 }
 
-pub fn glob_expand(input: &str) -> Result<Vec<PathBuf>> {
-    let paths = glob::glob(input)?.collect::<Result<Vec<_>, _>>()?;
-    if paths.is_empty() {
-        return Err(anyhow!("No files found matching pattern: '{}'", input));
-    }
-    Ok(paths)
-}
-
-/// Extracts the base name of a file without the ".pfs" extension.
-///
-/// # Arguments
-///
-/// * `input` - A reference to a `Path` representing the file path.
-///
-/// # Returns
-///
-/// * `Ok(String)` - The base name of the file without the ".pfs" extension if successful.
-/// * `Err(anyhow::Error)` - If the file name is invalid or does not contain the ".pfs" extension.
+/// Returns the stem before ".pfs" in the filename (e.g. `game.pfs.000` → `"game"`).
+/// Falls back to the full filename if ".pfs" is not present.
 pub fn get_pfs_basename(input: &Path) -> Result<String> {
-    if let Some(name) = input.file_name().and_then(|s| s.to_str()) {
-        if let Some(pos) = name.find(".pfs") {
-            return Ok(name[..pos].to_string());
-        }
-        return Ok(name.to_string());
+    let name = input
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow!("Failed to get file name"))?;
+
+    if let Some(pos) = name.find(".pfs") {
+        Ok(name[..pos].to_string())
+    } else {
+        Ok(name.to_string())
     }
-    Err(anyhow!("Failed to get file name"))
 }
 
+/// Returns the parent path joined with the stem before ".pfs"
+/// (e.g. `/data/game.pfs.000` → `/data/game`).
 pub fn get_pfs_basepath(input: &Path) -> Result<PathBuf> {
-    if let Some(name) = input.file_name().and_then(|s| s.to_str()) {
-        if let Some(pos) = name.find(".pfs") {
-            let base = input.parent().unwrap();
-            let path = base.join(&name[..pos]);
-            return Ok(path);
-        }
-        return Err(anyhow!("Invalid file name"));
-    }
-    Err(anyhow!("Failed to get file name"))
+    let name = input
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow!("Failed to get file name"))?;
+
+    let pos = name
+        .find(".pfs")
+        .ok_or_else(|| anyhow!("Invalid file name"))?;
+    let parent = input.parent().unwrap_or(Path::new(""));
+    Ok(parent.join(&name[..pos]))
 }
 
-/// input: dir: workdir/test base: root
-/// output: Ok(workdir/test/root.pfs.000)
+/// Returns the first non-existing path of the form `<dir>/<base>.pfs`,
+/// then `<dir>/<base>.pfs.000`, `.001`, … .
 pub fn try_get_next_nonexist_pfs(dir: &Path, base: &str) -> Result<PathBuf> {
-    // return root.pfs if not exist
-    let filename = format!("{base}.pfs");
-    let path = dir.join(filename);
-    if !path.exists() {
-        return Ok(path);
+    let candidate = dir.join(format!("{base}.pfs"));
+    if !candidate.exists() {
+        return Ok(candidate);
     }
-    // return root.pfs.xxx if not exist
-    let mut i = 0;
-    loop {
-        let filename = format!("{base}.pfs.{i:03}");
-        let path = dir.join(filename);
-        if !path.exists() {
-            return Ok(path);
+    for i in 0.. {
+        let candidate = dir.join(format!("{base}.pfs.{i:03}"));
+        if !candidate.exists() {
+            return Ok(candidate);
         }
-        i += 1;
+    }
+    unreachable!()
+}
+
+// --- Output path resolution ---
+
+/// Resolve the extraction output directory from CLI arguments.
+pub fn determine_extract_output(
+    input: &Path,
+    specified_output: Option<&Path>,
+    separate: bool,
+) -> PathBuf {
+    match specified_output {
+        Some(output) if separate => {
+            // Separate mode: create a subdirectory named after the archive stem.
+            let stem = input
+                .file_stem()
+                .unwrap_or_else(|| input.file_name().unwrap());
+            output.join(stem)
+        }
+        Some(output) => output.to_path_buf(),
+        None => get_pfs_basepath(input).unwrap_or_else(|_| input.with_extension("")),
     }
 }
 
-/// 输入类型枚举
+/// Resolve the pack output file path from CLI arguments.
+pub fn determine_pack_output(
+    _inputs: &[PathBuf],
+    specified_output: Option<&Path>,
+    overwrite: bool,
+) -> Result<PathBuf> {
+    match specified_output {
+        Some(output) if output.is_dir() => {
+            if overwrite {
+                Ok(output.join("root.pfs"))
+            } else {
+                try_get_next_nonexist_pfs(output, "root")
+            }
+        }
+        Some(output) => Ok(output.to_path_buf()),
+        None => {
+            let cwd = std::env::current_dir()?;
+            if overwrite {
+                Ok(cwd.join("root.pfs"))
+            } else {
+                try_get_next_nonexist_pfs(&cwd, "root")
+            }
+        }
+    }
+}
+
+// --- Input classification (drag-in / no-subcommand mode) ---
+
+/// Describes what kind of inputs were passed on the command line.
 #[derive(Debug, Clone)]
 pub enum InputType {
+    /// One or more PFS archives to extract.
     PfsFiles(Vec<PathBuf>),
+    /// Directories and/or loose files to pack into an archive.
     PackFiles {
         dirs: Vec<PathBuf>,
         files: Vec<PathBuf>,
     },
 }
 
-/// 处理多种形式的CLI输入路径
+/// Classify a mixed list of CLI inputs into either an extract or a pack operation.
+/// Returns an error if PFS archives and pack inputs are mixed together.
 pub fn process_cli_inputs(inputs: Vec<PathBuf>) -> Result<InputType> {
     if inputs.is_empty() {
         return Err(anyhow!("No input provided"));
@@ -98,12 +129,10 @@ pub fn process_cli_inputs(inputs: Vec<PathBuf>) -> Result<InputType> {
     let mut directories = Vec::new();
     let mut regular_files = Vec::new();
 
-    // 分类输入
     for input in inputs {
         if !input.exists() {
             return Err(anyhow!("Input path does not exist: {:?}", input));
         }
-
         if input.is_dir() {
             directories.push(input);
         } else if is_file_pf8_from_filename(&input) {
@@ -115,27 +144,36 @@ pub fn process_cli_inputs(inputs: Vec<PathBuf>) -> Result<InputType> {
         }
     }
 
-    // 根据输入类型确定操作
     let has_pfs = !pfs_files.is_empty();
-    let has_pack_input = !directories.is_empty() || !regular_files.is_empty();
+    let has_pack = !directories.is_empty() || !regular_files.is_empty();
 
-    match (has_pfs, has_pack_input) {
-        (true, false) => {
-            // 只有 PFS 文件，执行解包操作
-            Ok(InputType::PfsFiles(pfs_files))
-        }
-        (false, true) => {
-            // 只有目录或文件，执行打包操作
-            Ok(InputType::PackFiles {
-                dirs: directories,
-                files: regular_files,
-            })
-        }
+    match (has_pfs, has_pack) {
+        (true, false) => Ok(InputType::PfsFiles(pfs_files)),
+        (false, true) => Ok(InputType::PackFiles {
+            dirs: directories,
+            files: regular_files,
+        }),
         (true, true) => Err(anyhow!(
             "Cannot mix PFS files and pack inputs (directories/files) in the same operation"
         )),
         (false, false) => Err(anyhow!("No valid input found")),
     }
+}
+
+// --- Miscellaneous ---
+
+/// Returns true if the directory contains a `system.ini` file (classic PFS game structure).
+pub fn has_system_ini(dir: &Path) -> bool {
+    dir.join("system.ini").exists()
+}
+
+/// Expand a glob pattern to a list of paths, returning an error if nothing matches.
+pub fn glob_expand(input: &str) -> Result<Vec<PathBuf>> {
+    let paths = glob::glob(input)?.collect::<Result<Vec<_>, _>>()?;
+    if paths.is_empty() {
+        return Err(anyhow!("No files found matching pattern: '{}'", input));
+    }
+    Ok(paths)
 }
 
 #[cfg(test)]
@@ -144,30 +182,18 @@ mod tests {
     use std::fs;
     use std::io::Write;
 
-    /// 创建临时测试目录结构
     fn setup_test_env() -> Result<tempfile::TempDir> {
         let temp_dir = tempfile::tempdir()?;
-
-        // 创建一些测试文件和目录
         let test_dir = temp_dir.path().join("test_data");
         fs::create_dir(&test_dir)?;
 
-        // 创建一个 PFS 文件
-        let pfs_file = test_dir.join("game.pfs");
-        fs::File::create(&pfs_file)?;
+        fs::File::create(test_dir.join("game.pfs"))?;
+        fs::File::create(test_dir.join("game.pfs.000"))?;
 
-        let pfs_file = test_dir.join("game.pfs.000");
-        fs::File::create(&pfs_file)?;
+        let mut f = fs::File::create(test_dir.join("readme.txt"))?;
+        f.write_all(b"test content")?;
 
-        // 创建一个普通文件
-        let normal_file = test_dir.join("readme.txt");
-        let mut file = fs::File::create(&normal_file)?;
-        file.write_all(b"test content")?;
-
-        // 创建一个子目录
-        let sub_dir = test_dir.join("assets");
-        fs::create_dir(&sub_dir)?;
-
+        fs::create_dir(test_dir.join("assets"))?;
         Ok(temp_dir)
     }
 
@@ -196,14 +222,14 @@ mod tests {
 
     #[test]
     fn test_get_pfs_basepath() -> Result<()> {
-        let pfs_path = Path::new("/test/dir/game.pfs");
-        let result = get_pfs_basepath(pfs_path)?;
-        assert_eq!(result, PathBuf::from("/test/dir/game"));
-
-        let pfs_numbered = Path::new("/test/dir/game.pfs.000");
-        let result2 = get_pfs_basepath(pfs_numbered)?;
-        assert_eq!(result2, PathBuf::from("/test/dir/game"));
-
+        assert_eq!(
+            get_pfs_basepath(Path::new("/test/dir/game.pfs"))?,
+            PathBuf::from("/test/dir/game")
+        );
+        assert_eq!(
+            get_pfs_basepath(Path::new("/test/dir/game.pfs.000"))?,
+            PathBuf::from("/test/dir/game")
+        );
         Ok(())
     }
 
@@ -213,17 +239,12 @@ mod tests {
         let pfs_file1 = temp_dir.path().join("test_data").join("game.pfs");
         let pfs_file2 = temp_dir.path().join("test_data").join("game.pfs.000");
 
-        let result = process_cli_inputs(vec![pfs_file1.clone(), pfs_file2.clone()])?;
-
-        match result {
+        match process_cli_inputs(vec![pfs_file1.clone(), pfs_file2.clone()])? {
             InputType::PfsFiles(files) => {
-                assert_eq!(files.len(), 2);
-                assert_eq!(files[0], pfs_file1);
-                assert_eq!(files[1], pfs_file2);
+                assert_eq!(files, vec![pfs_file1, pfs_file2]);
             }
             _ => panic!("Expected PfsFiles variant"),
         }
-
         Ok(())
     }
 
@@ -234,18 +255,13 @@ mod tests {
         let normal_file = test_dir.join("readme.txt");
         let sub_dir = test_dir.join("assets");
 
-        let result = process_cli_inputs(vec![normal_file.clone(), sub_dir.clone()])?;
-
-        match result {
+        match process_cli_inputs(vec![normal_file.clone(), sub_dir.clone()])? {
             InputType::PackFiles { dirs, files } => {
-                assert_eq!(dirs.len(), 1);
-                assert_eq!(files.len(), 1);
-                assert_eq!(dirs[0], sub_dir);
-                assert_eq!(files[0], normal_file);
+                assert_eq!(dirs, vec![sub_dir]);
+                assert_eq!(files, vec![normal_file]);
             }
             _ => panic!("Expected PackFiles variant"),
         }
-
         Ok(())
     }
 
@@ -253,11 +269,8 @@ mod tests {
     fn test_process_cli_inputs_mixed_error() -> Result<()> {
         let temp_dir = setup_test_env()?;
         let test_dir = temp_dir.path().join("test_data");
-        let pfs_file = test_dir.join("game.pfs");
-        let normal_file = test_dir.join("readme.txt");
-
-        let result = process_cli_inputs(vec![pfs_file, normal_file]);
-        assert!(result.is_err());
+        let result =
+            process_cli_inputs(vec![test_dir.join("game.pfs"), test_dir.join("readme.txt")]);
         assert!(
             result
                 .unwrap_err()
@@ -269,10 +282,8 @@ mod tests {
 
     #[test]
     fn test_process_cli_inputs_empty_error() {
-        let result = process_cli_inputs(vec![]);
-        assert!(result.is_err());
         assert!(
-            result
+            process_cli_inputs(vec![])
                 .unwrap_err()
                 .to_string()
                 .contains("No input provided")
@@ -281,9 +292,11 @@ mod tests {
 
     #[test]
     fn test_process_cli_inputs_nonexistent_path() {
-        let nonexistent = PathBuf::from("/nonexistent/path");
-        let result = process_cli_inputs(vec![nonexistent]);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("does not exist"));
+        assert!(
+            process_cli_inputs(vec![PathBuf::from("/nonexistent/path")])
+                .unwrap_err()
+                .to_string()
+                .contains("does not exist")
+        );
     }
 }
