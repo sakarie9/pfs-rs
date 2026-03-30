@@ -1,9 +1,13 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 // 导入要测试的函数
 // 注意：这些函数在 main.rs 中已经标记为 pub(crate)
 use pfs_rs::{determine_extract_output, determine_pack_output};
+
+// 保护所有会修改进程全局 cwd 的测试，防止并行运行时互相干扰
+static CWD_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// 测试模块：Extract 输出路径推断
 mod extract_output_tests {
@@ -247,16 +251,18 @@ mod create_output_tests {
         Ok(())
     }
 
-    /// 辅助结构：临时改变当前工作目录
+    /// 辅助结构：临时改变当前工作目录，同时持有全局锁以防并行测试互相干扰
     pub struct TestDirGuard {
         original: PathBuf,
+        _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl TestDirGuard {
         pub fn new(path: &Path) -> Result<Self> {
+            let _guard = crate::CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
             let original = std::env::current_dir()?;
             std::env::set_current_dir(path)?;
-            Ok(Self { original })
+            Ok(Self { original, _guard })
         }
     }
 
@@ -321,7 +327,8 @@ mod path_edge_cases {
         let temp_dir = tempfile::tempdir()?;
         let inputs: Vec<PathBuf> = vec![];
 
-        // 改变到临时目录以避免污染当前目录
+        // 改变到临时目录以避免污染当前目录，持有全局锁防止并行冲突
+        let _lock = crate::CWD_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let original_dir = std::env::current_dir()?;
         std::env::set_current_dir(temp_dir.path())?;
 
